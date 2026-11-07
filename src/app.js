@@ -4,6 +4,9 @@ const express = require('express');
 const { calculateBill } = require('./calc');
 const { hashPassword, checkPassword } = require('./db');
 const { renderBill, renderMessage } = require('./print');
+const { registerAccountRoutes } = require('./accounts');
+const { registerQuotationRoutes } = require('./quotations');
+const { registerUserRoutes } = require('./users');
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = 'sv_session';
@@ -60,7 +63,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     if (!token) return null;
     return db.prepare(`
       SELECT u.id, u.username, u.name, u.role FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ?
+      WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1
     `).get(sha256(token), Date.now()) || null;
   }
 
@@ -98,6 +101,11 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       approvedAt: row.approved_at,
+      quoteStatus: row.quote_status,
+      lostReason: row.lost_reason,
+      lostNote: row.lost_note,
+      followUpOn: row.follow_up_on,
+      acceptedOn: row.order_accepted_on,
     };
   }
 
@@ -180,7 +188,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   // ----- Sign in -----
   app.post('/api/login', rateLimiter(limits.login, 15 * 60 * 1000), (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(text(req.body.username, 60).toLowerCase());
-    if (!user || !checkPassword(String(req.body.password ?? ''), user)) throw new Problem(401, 'Wrong username or password');
+    if (!user || !user.active || !checkPassword(String(req.body.password ?? ''), user)) throw new Problem(401, 'Wrong username or password');
     const token = crypto.randomBytes(32).toString('hex');
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), user.id, Date.now() + SESSION_MS);
@@ -368,6 +376,10 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     db.prepare('UPDATE enquiries SET status = ? WHERE id = ?').run(req.body.status, Number(req.params.id));
     res.json({ ok: true });
   });
+
+  registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, text, now });
+  registerQuotationRoutes(app, { db, requireLogin, Problem, text });
+  registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));

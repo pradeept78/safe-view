@@ -97,11 +97,71 @@ function createSchema(db) {
       status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'closed')),
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY,
+      bill_id INTEGER NOT NULL REFERENCES bills(id),
+      date TEXT NOT NULL,
+      amount REAL NOT NULL,
+      method TEXT NOT NULL CHECK (method IN ('cash', 'online')),
+      reference TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS vendor_payments (
+      id INTEGER PRIMARY KEY,
+      bill_id INTEGER NOT NULL REFERENCES bills(id),
+      date TEXT NOT NULL,
+      vendor TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL,
+      method TEXT NOT NULL CHECK (method IN ('cash', 'online')),
+      note TEXT NOT NULL DEFAULT '',
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY,
+      date TEXT NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL,
+      method TEXT NOT NULL CHECK (method IN ('cash', 'online')),
+      note TEXT NOT NULL DEFAULT '',
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS investments (
+      id INTEGER PRIMARY KEY,
+      date TEXT NOT NULL,
+      person TEXT NOT NULL,
+      paid_for TEXT NOT NULL,
+      amount REAL NOT NULL,
+      method TEXT NOT NULL CHECK (method IN ('cash', 'online')),
+      note TEXT NOT NULL DEFAULT '',
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS payments_bill ON payments(bill_id);
+    CREATE INDEX IF NOT EXISTS vendor_payments_bill ON vendor_payments(bill_id);
   `);
 
   // Databases made before these columns existed get them here, keeping all their data.
   const hasColumn = (table, name) => db.prepare(`PRAGMA table_info(${table})`).all().some((column) => column.name === name);
   if (!hasColumn('glass_types', 'gst_percent')) db.exec('ALTER TABLE glass_types ADD COLUMN gst_percent REAL NOT NULL DEFAULT 18');
+  if (!hasColumn('users', 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  if (!hasColumn('bills', 'order_accepted_on')) db.exec('ALTER TABLE bills ADD COLUMN order_accepted_on TEXT');
+  if (!hasColumn('bills', 'lost_reason')) db.exec("ALTER TABLE bills ADD COLUMN lost_reason TEXT NOT NULL DEFAULT ''");
+  if (!hasColumn('bills', 'lost_note')) db.exec("ALTER TABLE bills ADD COLUMN lost_note TEXT NOT NULL DEFAULT ''");
+  if (!hasColumn('bills', 'follow_up_on')) db.exec('ALTER TABLE bills ADD COLUMN follow_up_on TEXT');
+  if (!hasColumn('bills', 'quote_status')) {
+    db.exec(`ALTER TABLE bills ADD COLUMN quote_status TEXT NOT NULL DEFAULT 'waiting'`);
+    // Bills made before quotation tracking: any sign of a real order counts as won.
+    db.exec(`UPDATE bills SET quote_status = 'won' WHERE status = 'approved' AND (
+      order_accepted_on IS NOT NULL
+      OR id IN (SELECT bill_id FROM payments)
+      OR id IN (SELECT bill_id FROM vendor_payments))`);
+  }
   if (!hasColumn('bills', 'extras_json')) db.exec("ALTER TABLE bills ADD COLUMN extras_json TEXT NOT NULL DEFAULT '[]'");
 }
 
