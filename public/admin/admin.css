@@ -619,3 +619,8 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
   .side nav{gap:2px}
   .side nav a{padding:8px 12px}
 }
+
+/* Settings and My Account */
+.field-hint{display:block;margin-top:4px;color:var(--muted);font-size:12px;font-weight:500}
+.stack .chips{margin-bottom:0}
+#form .grid{align-items:start}

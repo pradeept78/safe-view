@@ -92,6 +92,7 @@ Confirmed profit comes from completed projects. Expected profit comes from proje
 - Profit is the order value before GST, minus project costs. It is expected until completed, then confirmed.
 - Shop expenses are not taken off a project. Overview shows confirmed profit after shop expenses.
 - The dashboard has dark and light themes. Dark is the default. Switch with the sun or moon button beside Sign out, or More on a phone, and each device remembers its choice.
+- Settings has Business, Bank and Bills tabs that save together. GST number, IFSC, WhatsApp, email, GST % and allowance are checked before saving.
 - Quick add, in the sidebar or top bar, records payments, costs, expenses and investment from any page.
 - Add buttons on each page open the same popup, already set to that project or cost.
 - Monthly Accounts shows cash and online money in, vendor payments and shop expenses for a month.

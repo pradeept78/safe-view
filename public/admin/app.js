@@ -29,7 +29,7 @@ async function api(url, method = 'GET', body) {
     me = null;
     renderLogin();
   }
-  if (!res.ok) throw new Error(data.error || 'Something went wrong');
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong'), { field: data.field });
   return data;
 }
 
@@ -97,8 +97,9 @@ function shell(active, content) {
     renderLogin();
   };
   document.getElementById('quickAdd').onclick = () => openQuickAdd();
-  document.getElementById('themeBtn').onclick = window.toggleTheme;
-  document.getElementById('sheetTheme').onclick = window.toggleTheme;
+  const flipTheme = () => switchTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  document.getElementById('themeBtn').onclick = flipTheme;
+  document.getElementById('sheetTheme').onclick = flipTheme;
   document.getElementById('logout').onclick = signOut;
   document.getElementById('sheetLogout').onclick = signOut;
   showEnquiryBadge();
@@ -731,36 +732,71 @@ async function ratesPage() {
 }
 
 // ----- Settings -----
-const SETTING_FIELDS = [
-  ['business_name', 'Business name'], ['tagline', 'Tagline'], ['address', 'Address', 'wide'], ['gstin', 'GST number'],
-  ['phone', 'Phone'], ['whatsapp', 'WhatsApp number with country code, like 919876543210'], ['email', 'Email'], ['opening_hours', 'Opening hours'],
-  ['bank_name', 'Bank name'], ['bank_account', 'Account number'], ['bank_ifsc', 'IFSC'], ['bank_branch', 'Branch'],
-  ['jurisdiction', 'Jurisdiction city'], ['default_allowance_mm', 'Default allowance (mm)'], ['default_gst_percent', 'GST % for manual items'],
-  ['next_bill_number', 'Next bill number'],
+const SETTING_TABS = [
+  ['business', 'Business', [
+    ['business_name', 'Business name'], ['tagline', 'Tagline'], ['address', 'Address', { wide: true }],
+    ['gstin', 'GST number', { hint: '15 characters, like 29ABCDE1234F1Z5', caps: true, max: 15 }], ['phone', 'Phone', { mode: 'tel' }],
+    ['whatsapp', 'WhatsApp number', { hint: 'With country code, like 919876543210', mode: 'tel' }], ['email', 'Email', { mode: 'email' }],
+    ['opening_hours', 'Opening hours'], ['jurisdiction', 'Jurisdiction city'],
+  ]],
+  ['bank', 'Bank', [
+    ['bank_name', 'Bank name'], ['bank_account', 'Account number', { mode: 'numeric' }],
+    ['bank_ifsc', 'IFSC', { hint: '11 characters, like HDFC0001234', caps: true, max: 11 }], ['bank_branch', 'Branch'],
+  ]],
+  ['bills', 'Bills', [
+    ['default_allowance_mm', 'Default allowance (mm)', { mode: 'numeric' }], ['default_gst_percent', 'GST % for manual items', { mode: 'decimal' }],
+    ['next_bill_number', 'Next bill number', { mode: 'numeric', hint: 'The number the next approved bill will get' }],
+  ]],
 ];
+const settingsView = { tab: 'business' };
 
 async function settingsPage() {
   const settings = await api('/api/settings');
   const off = me.role === 'admin' ? '' : 'disabled';
+  const field = ([key, label, { wide, hint, caps, max, mode } = {}]) => `<label class="${wide ? 'wide' : ''}">${esc(label)}
+    <input name="${key}" value="${esc(settings[key])}" ${mode ? `inputmode="${mode}"` : ''} ${max ? `maxlength="${max}"` : ''} ${caps ? 'autocapitalize="characters"' : ''} ${off}>
+    ${hint ? `<small class="field-hint">${esc(hint)}</small>` : ''}</label>`;
+  const panel = (name) => `data-panel="${name}" ${settingsView.tab === name ? '' : 'hidden'}`;
   shell('settings', `
     <div class="head"><h1>Settings</h1></div>
     <div id="msg"></div>
-    <form class="card" id="form">
-      <div class="grid">
-        ${SETTING_FIELDS.map(([key, label, wide]) => `<label class="${wide || ''}">${esc(label)}<input name="${key}" value="${esc(settings[key])}" ${off}></label>`).join('')}
-        <label class="wide">Terms printed on bills<textarea name="terms" rows="8" ${off}>${esc(settings.terms)}</textarea></label>
-      </div>
+    <nav class="tabs" aria-label="Settings sections">
+      ${SETTING_TABS.map(([name, label]) => `<button type="button" data-tab="${name}" ${settingsView.tab === name ? 'aria-current="true"' : ''}>${label}</button>`).join('')}
+    </nav>
+    <form class="card" id="form" novalidate>
+      ${SETTING_TABS.map(([name, , fields]) => `<section ${panel(name)}><div class="grid">
+        ${fields.map(field).join('')}
+        ${name === 'bills' ? `<label class="wide">Terms printed on bills<textarea name="terms" rows="8" ${off}>${esc(settings.terms)}</textarea></label>` : ''}
+      </div></section>`).join('')}
       ${off ? '<p class="muted">Only the admin can change settings.</p>' : '<p class="acts"><button class="btn main">Save Settings</button></p>'}
     </form>`);
-  document.getElementById('form').onsubmit = async (event) => {
+  const form = document.getElementById('form');
+  const openTab = (name) => {
+    settingsView.tab = name;
+    root.querySelectorAll('[data-tab]').forEach((tab) => {
+      if (tab.dataset.tab === name) tab.setAttribute('aria-current', 'true');
+      else tab.removeAttribute('aria-current');
+    });
+    root.querySelectorAll('[data-panel]').forEach((section) => { section.hidden = section.dataset.panel !== name; });
+  };
+  root.querySelectorAll('[data-tab]').forEach((button) => { button.onclick = () => openTab(button.dataset.tab); });
+  form.onsubmit = async (event) => {
     event.preventDefault();
     try {
-      await api('/api/settings', 'PUT', Object.fromEntries(new FormData(event.target)));
+      const saved = await api('/api/settings', 'PUT', Object.fromEntries(new FormData(form)));
+      Object.entries(saved).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value; });
+      showAlert('msg', '');
       showAlert('msg', 'Settings saved', 'good');
     } catch (error) {
       showAlert('msg', error.message);
+      window.scrollTo(0, 0);
+      // All tabs save together, so show the tab that holds the mistake.
+      const input = form.elements[error.field];
+      if (input) {
+        openTab(input.closest('[data-panel]').dataset.panel);
+        input.focus({ preventScroll: true });
+      }
     }
-    window.scrollTo(0, 0);
   };
 }
 
@@ -904,22 +940,49 @@ async function usersPage() {
 }
 
 // ----- My account -----
+const currentTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+
+// The sidebar switch and My Account both change the theme, so keep them showing the same thing.
+function switchTheme(theme) {
+  window.setTheme(theme);
+  document.querySelectorAll('#themePick button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.value === theme)));
+}
+
 function accountPage() {
   shell('account', `
     <div class="head"><h1>My Account</h1></div>
     <div id="msg"></div>
+    <div class="card stack">
+      <h2>Sign in</h2>
+      <div class="totals plain">
+        <div><span>Username</span><span>${esc(me.username)}</span></div>
+        <div><span>Role</span><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
+      </div>
+      <p class="muted" style="margin:0">${me.role === 'admin' ? 'You can change usernames on the Users page.' : 'Ask your admin if your username needs to change.'}</p>
+    </div>
     <form class="card stack" id="name">
       <h2>Name printed on bills</h2>
-      <label>Your name<input name="name" value="${esc(me.name)}" required></label>
+      <label>Your name<input name="name" value="${esc(me.name)}" maxlength="80" required></label>
       <p class="acts"><button class="btn">Save Name</button></p>
     </form>
+    <div class="card stack">
+      <h2>Theme</h2>
+      <p class="muted" style="margin:0">Saved on this device only.</p>
+      ${chips('themePick', 'Theme', [['dark', 'Dark'], ['light', 'Light']], currentTheme())}
+    </div>
     <form class="card stack" id="pass">
       <h2>Change password</h2>
       <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
       <label>New password (at least 8 characters)<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>Type the new password again<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+      <p class="muted" style="margin:0">Changing it signs you out on your other devices.</p>
       <p class="acts"><button class="btn main">Change Password</button></p>
     </form>`);
+  wireChips('themePick', switchTheme);
+  const fail = (message) => {
+    showAlert('msg', message);
+    window.scrollTo(0, 0);
+  };
   document.getElementById('name').onsubmit = async (event) => {
     event.preventDefault();
     try {
@@ -927,15 +990,14 @@ function accountPage() {
       accountPage();
       showAlert('msg', 'Name saved', 'good');
     } catch (error) {
-      showAlert('msg', error.message);
+      fail(error.message);
     }
   };
   document.getElementById('pass').onsubmit = async (event) => {
     event.preventDefault();
     const { currentPassword, newPassword, confirmPassword } = Object.fromEntries(new FormData(event.target));
     if (newPassword !== confirmPassword) {
-      showAlert('msg', 'The two new passwords do not match. Nothing was changed.');
-      window.scrollTo(0, 0);
+      fail('The two new passwords do not match. Nothing was changed.');
       return;
     }
     try {
@@ -944,7 +1006,7 @@ function accountPage() {
       showAlert('msg', '');
       showAlert('msg', 'Password changed', 'good');
     } catch (error) {
-      showAlert('msg', error.message);
+      fail(error.message);
     }
   };
 }
