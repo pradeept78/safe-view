@@ -22,11 +22,30 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 const text = (value, max = 500) => String(value ?? '').trim().slice(0, max);
 
 class Problem extends Error {
-  constructor(status, message) {
+  constructor(status, message, field) {
     super(message);
     this.status = status;
+    this.field = field;
   }
 }
+
+const inRange = (value, low, high) => value !== '' && Number.isFinite(Number(value)) && Number(value) >= low && Number(value) <= high;
+
+// Each rule keeps a mistake out of the settings that bills and invoices are built from.
+const SETTING_RULES = {
+  business_name: [(value) => value !== '', 'Enter the business name'],
+  gstin: [(value) => !value || /^\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(value), 'GST number should have 15 characters, like 29ABCDE1234F1Z5'],
+  bank_ifsc: [(value) => !value || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(value), 'IFSC should have 11 characters, like HDFC0001234'],
+  whatsapp: [(value) => !value || /^\d{10,15}$/.test(value), 'WhatsApp number should have 10 to 15 digits, with the country code'],
+  email: [(value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), 'Enter a valid email address'],
+  default_allowance_mm: [(value) => inRange(value, 0, 1000), 'Default allowance should be a number from 0 to 1000'],
+  default_gst_percent: [(value) => inRange(value, 0, 100), 'GST % should be a number from 0 to 100'],
+};
+const SETTING_TIDY = {
+  gstin: (value) => value.toUpperCase(),
+  bank_ifsc: (value) => value.toUpperCase(),
+  whatsapp: (value) => value.replace(/\D/g, ''),
+};
 
 function rateLimiter(limit, windowMs) {
   const hits = new Map();
@@ -456,13 +475,19 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
     const current = getSettings();
     const update = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
     const next = Number(req.body.next_bill_number ?? current.next_bill_number);
-    if (!Number.isInteger(next) || next < 1) throw new Problem(400, 'Next bill number must be a whole number');
+    if (!Number.isInteger(next) || next < 1) throw new Problem(400, 'Next bill number must be a whole number', 'next_bill_number');
     const used = db.prepare("SELECT COUNT(*) AS n FROM bills WHERE number = ?").get(`PI/${String(next).padStart(5, '0')}`).n;
-    if (used) throw new Problem(400, 'That bill number has already been used');
+    if (used) throw new Problem(400, 'That bill number has already been used', 'next_bill_number');
+    const values = {};
+    for (const key of Object.keys(current)) {
+      if (!(key in req.body)) continue;
+      const value = text(req.body[key], 3000);
+      values[key] = SETTING_TIDY[key] ? SETTING_TIDY[key](value) : value;
+      const rule = SETTING_RULES[key];
+      if (rule && !rule[0](values[key])) throw new Problem(400, rule[1], key);
+    }
     db.transaction(() => {
-      for (const key of Object.keys(current)) {
-        if (key in req.body) update.run(text(req.body[key], 3000), key);
-      }
+      for (const [key, value] of Object.entries(values)) update.run(value, key);
     })();
     res.json(getSettings());
   });
@@ -523,7 +548,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   app.use((error, req, res, next) => {
-    if (error.status && error.status < 500) return res.status(error.status).json({ error: error.message });
+    if (error.status && error.status < 500) return res.status(error.status).json({ error: error.message, field: error.field });
     console.error(error);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });

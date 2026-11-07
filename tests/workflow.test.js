@@ -102,13 +102,13 @@ test('bill numbers run in order of approval with no gaps', async () => {
 
 test('an approved bill keeps the business details it was approved with', async () => {
   const admin = await login('admin');
-  await call(admin, 'PUT', '/api/settings', { gstin: 'OLD-GST' });
+  await call(admin, 'PUT', '/api/settings', { gstin: '29OLDGS1234F1Z5' });
   const { body } = await call(admin, 'POST', '/api/bills', draft);
   await call(admin, 'POST', `/api/bills/${body.id}/approve`);
-  await call(admin, 'PUT', '/api/settings', { gstin: 'NEW-GST' });
+  await call(admin, 'PUT', '/api/settings', { gstin: '29NEWGS1234F1Z5' });
   const printed = await call(admin, 'GET', `/print/${body.id}`);
-  assert.match(printed.body, /OLD-GST/);
-  assert.doesNotMatch(printed.body, /NEW-GST/);
+  assert.match(printed.body, /29OLDGS1234F1Z5/);
+  assert.doesNotMatch(printed.body, /29NEWGS1234F1Z5/);
 });
 
 test('printouts escape what people type', async () => {
