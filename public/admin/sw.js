@@ -1,11 +1,12 @@
 // Keeps only the app's design files on the phone, so it can show a friendly offline screen.
 // Bills, payments and customer details are never stored here: /api and /print are left alone.
 
-const CACHE = 'safe-view-shell-v2';
+const CACHE = 'safe-view-shell-v3';
 const SHELL = [
   '/admin/offline.html',
   '/admin/admin.css',
   '/admin/app.js',
+  '/admin/theme.js',
   '/admin/icons/icon-192.png',
   '/img/word-t.png',
 ];
