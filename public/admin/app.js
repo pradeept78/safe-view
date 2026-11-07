@@ -56,6 +56,7 @@ function shell(active, content) {
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const more = [['accounts', 'Monthly Accounts'], ['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
   const moreActive = more.some(([hash]) => hash === active);
+  const navScroll = root.querySelector('.side nav')?.scrollTop || 0;
   root.innerHTML = `
     <div class="layout">
       <aside class="side">
@@ -84,6 +85,7 @@ function shell(active, content) {
         </div>
       </div>
     </div>`;
+  root.querySelector('.side nav').scrollTop = navScroll;
   const sheet = document.getElementById('moreSheet');
   const moreBtn = document.getElementById('moreBtn');
   const toggleSheet = (open) => { sheet.hidden = !open; moreBtn.setAttribute('aria-expanded', String(open)); };
