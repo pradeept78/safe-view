@@ -9,6 +9,7 @@ const { registerQuotationRoutes } = require('./quotations');
 const { registerUserRoutes } = require('./users');
 const { registerBillActions } = require('./bill-actions');
 const { registerActivity } = require('./activity');
+const { registerOverview } = require('./overview');
 const { createNotifier } = require('./notify');
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -494,6 +495,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
   registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, text, now });
   registerQuotationRoutes(app, { db, requireLogin, Problem, text });
   registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text });
+  registerOverview(app, { db, requireLogin });
   registerBillActions(app, { db, requireLogin, requireAdmin, Problem, text, now, presentBill, getSettings });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));

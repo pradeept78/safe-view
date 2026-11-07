@@ -36,6 +36,7 @@ async function api(url, method = 'GET', body) {
 const ICONS = {
   bills: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
   enquiries: '<path d="M4 5h16v11H9l-5 4zM8 10h8"/>',
+  overview: '<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 7h6V4h-6zM4 20h6v-3H4z"/>',
   quotations: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13l2 2 4-4"/>',
   projects: '<path d="M3 7h7l2 3h9v10H3zM3 7V4h6l2 3"/>',
   accounts: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
@@ -50,13 +51,13 @@ const ICONS = {
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
-  const more = [['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
+  const more = [['accounts', 'Monthly Accounts'], ['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
   const moreActive = more.some(([hash]) => hash === active);
   root.innerHTML = `
     <div class="layout">
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
-        <nav aria-label="Dashboard">${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
+        <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
@@ -65,7 +66,7 @@ function shell(active, content) {
       </aside>
       <main class="wrap">${content}</main>
       <nav class="tabbar" aria-label="Main">
-        ${tab('bills', 'Bills')}${tab('quotations', 'Quotes')}${tab('projects', 'Projects')}${tab('accounts', 'Accounts')}
+        ${tab('overview', 'Overview')}${tab('bills', 'Bills')}${tab('quotations', 'Quotes')}${tab('projects', 'Projects')}
         <button type="button" class="${moreActive ? 'on' : ''}" id="moreBtn" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.500"/><circle cx="12" cy="12" r="1.500"/><circle cx="19" cy="12" r="1.500"/></svg>More</button>
       </nav>
       <div class="sheet" id="moreSheet" hidden>
@@ -621,12 +622,12 @@ async function ratesPage() {
   const off = isAdmin ? '' : 'disabled';
   const row = (g) => `
     <tr data-id="${g.id}">
-      <td><input data-k="name" aria-label="Material name" style="min-width:220px" value="${esc(g.name)}" ${off}></td>
+      <td><input data-k="name" aria-label="Material name" class="material-name" placeholder="${g.id === 'new' ? 'Like: 8MM CLEAR TOUGHENED GLASS' : ''}" value="${esc(g.name)}" ${off}></td>
       <td><input data-k="hsn" aria-label="HSN code" value="${esc(g.hsn)}" ${off}></td>
       <td><input data-k="thickness_mm" aria-label="Thickness" type="number" step="0.1" value="${esc(g.thickness_mm)}" ${off}></td>
       <td><input data-k="rate" aria-label="Rate" type="number" step="0.01" value="${esc(g.rate)}" ${off}></td>
       <td><input data-k="gst_percent" aria-label="GST percent" type="number" step="0.01" value="${esc(g.gst_percent)}" ${off}></td>
-      ${isAdmin ? '<td style="white-space:nowrap"><button class="btn small" data-save>Save</button> <button class="btn small danger" data-del>Remove</button></td>' : ''}
+      ${isAdmin ? `<td style="white-space:nowrap"><button class="btn small ${g.id === 'new' ? 'main' : ''}" data-save>${g.id === 'new' ? 'Add Material' : 'Save'}</button>${g.id === 'new' ? '' : ' <button class="btn small danger" data-del>Remove</button>'}</td>` : ''}
     </tr>`;
   shell('rates', `
     <div class="head"><h1>Materials &amp; Rates</h1></div>
@@ -635,9 +636,9 @@ async function ratesPage() {
     <div class="card scroll"><table class="lines">
       <tr><th>Material</th><th>HSN</th><th>Thickness (mm)</th><th>Rate per sq m</th><th>GST %</th>${isAdmin ? '<th></th>' : ''}</tr>
       ${glass.map(row).join('')}
-      ${isAdmin ? row({ id: 'new', name: '', hsn: '', thickness_mm: '', rate: '', gst_percent: settings.default_gst_percent }) : ''}
+      ${isAdmin ? `<tr class="add-heading"><td colspan="6">Add a new material</td></tr>${row({ id: 'new', name: '', hsn: '', thickness_mm: '', rate: '', gst_percent: settings.default_gst_percent })}` : ''}
     </table></div>
-    ${isAdmin ? '<p class="muted">Use the last row to add a material. Changing a rate or GST does not change bills already made.</p>' : '<p class="muted">Only the admin can change materials and rates.</p>'}`);
+    ${isAdmin ? '<p class="muted">Rates are per square metre. Changing a rate or GST does not change bills already made.</p>' : '<p class="muted">Only the admin can change materials and rates.</p>'}`);
   root.querySelectorAll('tr[data-id]').forEach((tr) => {
     const body = () => Object.fromEntries([...tr.querySelectorAll('input')].map((i) => [i.dataset.k, i.value]));
     const isNew = tr.dataset.id === 'new';
@@ -987,6 +988,90 @@ async function drawDecision(bill) {
   };
 }
 
+// ----- Business overview -----
+const shortMoney = (value) => {
+  const amount = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (amount >= 10000000) return `${sign}₹${(amount / 10000000).toFixed(1)}Cr`;
+  if (amount >= 100000) return `${sign}₹${(amount / 100000).toFixed(1)}L`;
+  if (amount >= 1000) return `${sign}₹${(amount / 1000).toFixed(1)}K`;
+  return `${sign}₹${Math.round(amount)}`;
+};
+const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
+const monthLong = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+// Bars are plain HTML, so they stay readable at any width and need no chart library.
+function monthlyBars(months, key, title, kind) {
+  const values = months.map((m) => m[key]);
+  const top = Math.max(0, ...values);
+  const bottom = Math.min(0, ...values);
+  const span = top - bottom || 1;
+  const hasData = values.some((value) => value !== 0);
+  const bars = months.map((m) => {
+    const value = m[key];
+    const height = Math.abs(value) / span * 100;
+    const base = (0 - bottom) / span * 100;
+    const position = value >= 0 ? `bottom:${base}%` : `bottom:${base - height}%`;
+    return `<button type="button" class="bar-col" aria-label="${esc(monthLong(m.month))}: ${esc(money(value))}">
+      <span class="bar-area"><span class="zero-line" style="bottom:${base}%"></span><span class="bar ${kind} ${value < 0 ? 'negative' : ''}" style="${position};height:${value ? Math.max(height, 1.5) : 0}%"></span></span>
+      <span class="bar-month">${esc(monthName(m.month))}</span>
+      <span class="bar-tip">${esc(monthLong(m.month))}<b>${esc(money(value))}</b></span>
+    </button>`;
+  }).join('');
+  return `<div class="card chart">
+    <div class="chart-head"><h2>${esc(title)}</h2><span class="muted">Last 12 months</span></div>
+    ${hasData ? `<div class="chart-scale"><span>Highest ${esc(shortMoney(top))}</span>${bottom < 0 ? `<span>Lowest ${esc(shortMoney(bottom))}</span>` : ''}</div>
+    <div class="bars">${bars}</div>` : '<p class="muted chart-empty">Nothing to show yet. This fills in as you win orders.</p>'}
+  </div>`;
+}
+
+async function overviewPage() {
+  const o = await api('/api/overview');
+  const row = (label, value, strong) => `<div class="${strong ? 'strong' : ''}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
+  const decided = o.won + o.lost;
+  const tableRows = o.months.map((m) => `<tr><td>${esc(monthLong(m.month))}</td><td class="n">${money(m.sales)}</td><td class="n">${money(m.vendorPaid)}</td><td class="n">${money(m.expenses)}</td><td class="n">${money(m.profit)}</td></tr>`).join('');
+  shell('overview', `
+    <div class="head"><h1>Overview</h1></div>
+    <div class="stats">
+      ${stat('Total sales', money(o.sales), true)}
+      ${stat('Total profit', money(o.profit))}
+      ${stat('Total investment', money(o.investment))}
+      ${stat('Still to collect', money(o.toCollect))}
+    </div>
+    <div class="charts">
+      ${monthlyBars(o.months, 'sales', 'Sales by month', 'sales')}
+      ${monthlyBars(o.months, 'profit', 'Profit by month', 'profit')}
+    </div>
+    <div class="grid3-cards">
+      <div class="card"><h2>How profit is worked out</h2><div class="totals plain">
+        ${row('Sales before GST', money(o.sales))}
+        ${row('Paid to vendors', money(-o.vendorPaid))}
+        ${row('Shop expenses', money(-o.expenses))}
+        ${row('Profit', money(o.profit), true)}
+      </div></div>
+      <div class="card"><h2>Money</h2><div class="totals plain">
+        ${row('Billed with GST', money(o.billed))}
+        ${row('Received', money(o.received))}
+        ${row('Still to collect', money(o.toCollect), true)}
+      </div></div>
+      <div class="card"><h2>Investment</h2><div class="totals plain">
+        ${row('Total invested', money(o.investment))}
+        ${row('Earned back so far', `${o.recoveredPercent}%`, true)}
+      </div>
+      <div class="progress" role="img" aria-label="${o.recoveredPercent}% of the investment earned back"><span style="width:${Math.min(o.recoveredPercent, 100)}%"></span></div></div>
+      <div class="card"><h2>Quotations</h2><div class="totals plain">
+        ${row('Won', String(o.won))}
+        ${row('Lost', String(o.lost))}
+        ${row('Waiting', String(o.waiting))}
+        ${row('Win rate', decided ? `${Math.round((o.won / decided) * 100)}%` : 'No results yet', true)}
+      </div></div>
+    </div>
+    <details class="card table-view"><summary>See monthly numbers as a table</summary>
+      <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Vendors</th><th class="n">Expenses</th><th class="n">Profit</th></tr>${tableRows}</table></div>
+    </details>
+    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted, and costs in the month they were paid, so one month's profit can look high or low. This is a guide for running the shop, not an accounting statement.</p>`);
+}
+
 // ----- Quotation report -----
 const monthStart = () => `${today().slice(0, 7)}-01`;
 const report = { from: null, to: null, status: 'all' };
@@ -1316,6 +1401,7 @@ async function route() {
   const [page, id] = location.hash.replace(/^#\//, '').split('/');
   try {
     if (page === 'bill') await billPage(id);
+    else if (page === 'bills') await billsPage();
     else if (page === 'quotations') await quotationsPage();
     else if (page === 'projects') await projectsPage();
     else if (page === 'project') await projectPage(id);
@@ -1327,7 +1413,7 @@ async function route() {
     else if (page === 'users' && me.role === 'admin') await usersPage();
     else if (page === 'activity' && me.role === 'admin') await activityPage();
     else if (page === 'account') accountPage();
-    else await billsPage();
+    else await overviewPage();
   } catch (error) {
     if (me) shell('', `<div class="alert bad">${esc(error.message)}</div><a class="btn" href="#/bills">Back to bills</a>`);
   }
