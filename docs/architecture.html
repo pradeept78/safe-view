@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safe View Architecture</title>
+<style>
+:root{--bg:#f4f5f8;--card:#fff;--ink:#141c28;--muted:#5a6677;--line:#dfe3ea;--navy:#0d1420;--navy2:#1b2e4a;--gold:#a57f27;--gold-soft:#fbf5e4;--blue:#1d4f86;--blue-soft:#e4eefa;--green:#17613c;--green-soft:#dcf1e5;--red:#a52a22;--red-soft:#fbe4e2;--amber:#7a5600;--amber-soft:#fdf0cf;--code:#eef1f5}
+@media (prefers-color-scheme:dark){:root{--bg:#0c111a;--card:#151d2b;--ink:#eef1f5;--muted:#a6b0be;--line:#2b3749;--gold:#e0bf6d;--gold-soft:#2c2616;--blue:#9cc4f0;--blue-soft:#17293f;--green:#8fdcb1;--green-soft:#14301f;--red:#f3a59f;--red-soft:#3a1a18;--amber:#efcf83;--amber-soft:#332812;--code:#1e2838}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+h1,h2,h3,p{margin:0}
+h2{font:600 clamp(26px,4vw,34px)/1.15 Georgia,'Times New Roman',serif;margin-bottom:6px}
+h3{font-size:16px;line-height:1.3}
+code{font:13.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+a{color:inherit}
+header{background:linear-gradient(150deg,#0a0f18,#1b2e4a);color:#f1f3f7;padding:48px 20px 40px}
+.inner{max-width:1120px;margin:0 auto}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#e0bf6d}
+header h1{font:600 clamp(34px,7vw,56px)/1.05 Georgia,'Times New Roman',serif;margin:10px 0 12px}
+header p.lead{max-width:760px;color:#c6ceda;font-size:18px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:26px}
+.facts div{padding:12px 14px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.05)}
+.facts b{display:block;color:#ecd492;font-size:15px}
+.facts span{font-size:13px;color:#b6c0ce}
+nav.toc{position:sticky;top:0;z-index:9;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto}
+nav.toc div{display:flex;gap:4px;max-width:1120px;margin:0 auto;padding:8px 12px;width:max-content;min-width:100%}
+nav.toc a{padding:7px 11px;border-radius:8px;font-size:13.5px;font-weight:600;text-decoration:none;color:var(--muted);white-space:nowrap}
+nav.toc a:hover{background:var(--gold-soft);color:var(--ink)}
+main{padding:0 20px 56px}
+section{padding-top:44px}
+.sub{color:var(--muted);max-width:760px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:14px}
+.pitch{border-left:4px solid var(--gold);font-size:17px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px}
+
+/* Architecture diagram */
+.tier{border:1.5px dashed var(--line);border-radius:14px;padding:14px;position:relative}
+.tier>.label{font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.tier.server{border-color:var(--gold);background:var(--gold-soft)}
+.tier.docker{border:1.5px solid var(--blue);background:var(--blue-soft)}
+.row{display:flex;flex-wrap:wrap;gap:10px}
+.row>*{flex:1 1 150px;min-width:0}
+.node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+.node b{display:block;font-size:14.5px}
+.node span{color:var(--muted);font-size:13px;line-height:1.4;display:block}
+.node.dark{background:var(--navy);color:#f1f3f7;border-color:var(--navy)}
+.node.dark span{color:#b6c0ce}
+.down{display:flex;justify-content:center;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;font-weight:600;padding:7px 0;text-align:center}
+.down::before{content:'↓';font-size:20px;color:var(--gold);line-height:1}
+
+/* Numbered flows */
+.steps{list-style:none;margin:0;padding:0;counter-reset:s;display:grid;gap:8px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:32px minmax(0,1fr);gap:12px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--navy);color:#ecd492;font-weight:700;font-size:14px}
+.steps span{color:var(--muted);font-size:14px;display:block}
+
+/* Horizontal pipeline */
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
+.pipe .node{flex:1 1 130px;min-width:0}
+.pipe .to{align-self:center;color:var(--gold);font-size:20px;flex:0 0 auto}
+
+/* State flow */
+.states{display:grid;gap:8px}
+.state{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.pill{padding:6px 12px;border-radius:999px;font-size:13.5px;font-weight:700;background:var(--code);color:var(--ink)}
+.pill.draft{background:var(--code)}
+.pill.wait{background:var(--amber-soft);color:var(--amber)}
+.pill.won{background:var(--green-soft);color:var(--green)}
+.pill.lost{background:var(--red-soft);color:var(--red)}
+.pill.old{background:var(--blue-soft);color:var(--blue)}
+.arrow{color:var(--muted);font-size:13px;font-weight:600}
+.arrow b{color:var(--gold)}
+
+/* Data model */
+.entity{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.entity h3{background:var(--navy);color:#ecd492;padding:7px 12px;font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace}
+.entity p{padding:9px 12px;font-size:13.5px;color:var(--muted)}
+.entity.main{grid-column:span 2}
+.rel{font-size:14px;color:var(--muted);margin-top:12px}
+
+/* Tables */
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:700}
+
+/* Layers */
+.layer{display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px;padding:10px 12px;border-left:4px solid var(--green);background:var(--card);border-radius:8px;margin-bottom:8px;font-size:14.5px}
+.layer b{font-size:14.5px}
+.layer span{color:var(--muted)}
+
+/* STAR */
+.star{display:grid;gap:7px;font-size:14.5px}
+.star p{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px}
+.star i{font-style:normal;font-weight:800;color:var(--gold)}
+
+details{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+summary{padding:12px 14px;font-weight:700;cursor:pointer;list-style-position:inside}
+details p{padding:0 14px 14px;color:var(--muted);font-size:15px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--amber-soft);color:var(--amber)}
+footer{padding:24px 20px 40px;text-align:center;color:var(--muted);font-size:13px}
+
+@media (max-width:640px){
+  header{padding:36px 16px 30px}
+  main{padding:0 16px 44px}
+  .card{padding:15px}
+  .pipe{flex-direction:column}
+  .pipe .node{flex:none}
+  .pipe .to{transform:rotate(90deg);align-self:center}
+  .layer{grid-template-columns:minmax(0,1fr);gap:2px}
+  .entity.main{grid-column:auto}
+  table.dec,table.dec tbody,table.dec tr,table.dec td{display:block;width:100%}
+  table.dec tr:first-child{display:none}
+  table.dec tr{padding:12px 0;border-bottom:1px solid var(--line)}
+  table.dec tr:last-child{border-bottom:0}
+  table.dec td{padding:3px 0;border:0}
+  table.dec td:first-child{font-size:16px;margin-bottom:4px}
+  table.dec td:nth-child(2)::before{content:'Why: ';font-weight:700}
+  table.dec td:nth-child(3)::before{content:'Gives up: ';font-weight:700}
+  table.dec td:nth-child(4)::before{content:'Change when: ';font-weight:700}
+}
+@media print{
+  nav.toc{display:none}
+  body{background:#fff;font-size:12.5px}
+  section{padding-top:18px;break-inside:avoid-page}
+  .card,.node,details,.steps li{break-inside:avoid}
+  details{border:0}
+  details>*{display:block}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="inner">
+    <p class="eyebrow">System design walkthrough</p>
+    <h1>Safe View Glass Solutions</h1>
+    <p class="lead">A full-stack business system for a glass shop: a customer website, a quotation and billing dashboard, project profit tracking, and GST tax invoices, deployed on AWS with Docker.</p>
+    <div class="facts">
+      <div><b>Node.js + Express</b><span>REST API and server</span></div>
+      <div><b>Vanilla JS PWA</b><span>Installable dashboard</span></div>
+      <div><b>SQLite</b><span>One file, plus backups</span></div>
+      <div><b>Docker + Caddy</b><span>Containers and auto HTTPS</span></div>
+      <div><b>AWS Lightsail</b><span>Ubuntu server</span></div>
+      <div><b>71 automated tests</b><span>Node's built-in test runner</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Sections"><div>
+  <a href="#pitch">Pitch</a><a href="#system">Architecture</a><a href="#request">Request flow</a><a href="#business">Business flow</a><a href="#data">Data model</a><a href="#deploy">Deployment</a><a href="#security">Security</a><a href="#decisions">Decisions</a><a href="#stories">STAR stories</a><a href="#limits">Limits and scaling</a><a href="#qa">Interview Q&amp;A</a>
+</div></nav>
+
+<main><div class="inner">
+
+<section id="pitch">
+  <h2>The 30-second pitch</h2>
+  <p class="sub">Open with this, then let the interviewer choose where to go deeper.</p>
+  <div class="card pitch">
+    I built a production system for a glass business. Customers enquire through the website. Partners create quotations with GST-correct pricing, an admin approves them, and won orders become projects that track payments, vendor costs and profit. It's a Node.js monolith with SQLite, running in Docker behind Caddy on AWS. I kept the design simple on purpose, because it has a handful of users and needs to be cheap and easy to run. It has 71 automated tests, nightly backups, and role-based access enforced on the server.
+  </div>
+  <div class="grid3">
+    <div class="card"><h3>The problem</h3><p class="sub" style="margin:6px 0 0">A shop with manual billing had no view of which quotations turned into orders, or which projects made money.</p></div>
+    <div class="card"><h3>The users</h3><p class="sub" style="margin:6px 0 0">Customers, partners who draft bills, and an admin who approves them. Mostly used on phones.</p></div>
+    <div class="card"><h3>The goal</h3><p class="sub" style="margin:6px 0 0">Accurate bills, a clear approval step, and honest numbers on profit and lost orders, at low running cost.</p></div>
+  </div>
+</section>
+
+<section id="system">
+  <h2>System architecture</h2>
+  <p class="sub">One server, two containers. Only Caddy faces the internet, and the data sits outside the containers so a deployment can't remove it.</p>
+  <div class="card">
+    <div class="tier">
+      <div class="label">Users</div>
+      <div class="row">
+        <div class="node"><b>Customers</b><span>Website, enquiry form</span></div>
+        <div class="node"><b>Partners</b><span>Drafts, payments, expenses</span></div>
+        <div class="node"><b>Admin</b><span>Approvals, invoices, users</span></div>
+      </div>
+    </div>
+    <div class="down">HTTPS, with DNS at GoDaddy pointing to a static IP</div>
+    <div class="tier server">
+      <div class="label">AWS Lightsail: Ubuntu 24.04, 1 GB, firewall allows only 22, 80, 443</div>
+      <div class="tier docker">
+        <div class="label">Docker Compose: private network</div>
+        <div class="node dark"><b>Caddy container</b><span>Terminates HTTPS, renews Let's Encrypt certificates, redirects http and www, sets HSTS, compresses responses</span></div>
+        <div class="down">reverse proxy to app:4310, which has no public port</div>
+        <div class="node dark"><b>App container: Node.js + Express, non-root user</b><span>One process serves everything below</span></div>
+        <div class="row" style="margin-top:10px">
+          <div class="node"><b>Website</b><span>Static HTML, CSS, JS</span></div>
+          <div class="node"><b>Dashboard PWA</b><span>Single-page app with hash routing</span></div>
+          <div class="node"><b>REST API</b><span>Auth, bills, accounts, reports</span></div>
+          <div class="node"><b>Print pages</b><span>Server-rendered bills and invoices</span></div>
+        </div>
+      </div>
+      <div class="down">reads and writes a mounted host folder</div>
+      <div class="row">
+        <div class="node"><b>SQLite database</b><span>WAL mode, on the host disk</span></div>
+        <div class="node"><b>Nightly backups</b><span>Cron job, safe online copy, kept 14 days</span></div>
+      </div>
+    </div>
+    <div class="down">protects against losing the whole server</div>
+    <div class="row">
+      <div class="node"><b>Lightsail snapshots</b><span>Full copies stored off the server</span></div>
+      <div class="node"><b>GitHub</b><span>Private repository, source of truth for code</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="request">
+  <h2>Request flow</h2>
+  <p class="sub">What happens when the admin approves a bill. This is a good example because it touches every layer.</p>
+  <ol class="steps">
+    <li><div><b>The browser sends the request</b><span><code>POST /api/bills/:id/approve</code> over HTTPS, with an HttpOnly session cookie.</span></div></li>
+    <li><div><b>Caddy receives it</b><span>Decrypts it, adds the visitor's real IP, and forwards it over the private Docker network.</span></div></li>
+    <li><div><b>Express checks identity</b><span>The cookie token is hashed with SHA-256 and looked up in <code>sessions</code>. The session must be unexpired and the user active.</span></div></li>
+    <li><div><b>Express checks permission</b><span><code>requireAdmin</code> runs on the server, so hiding a button is never the only protection.</span></div></li>
+    <li><div><b>One database transaction runs</b><span>Assigns the next bill number, stores a snapshot of business details, and locks the bill. If this is a revision, it moves payments across too.</span></div></li>
+    <li><div><b>The response returns</b><span>The dashboard redraws and shows a confirmation.</span></div></li>
+  </ol>
+</section>
+
+<section id="business">
+  <h2>Business flow</h2>
+  <p class="sub">Each bill moves through clear states. The rules are enforced by the API, not just the screens.</p>
+  <div class="card">
+    <div class="states">
+      <div class="state"><span class="pill draft">Draft</span><span class="arrow"><b>→</b> partner sends</span><span class="pill wait">Waiting for admin</span><span class="arrow"><b>→</b> admin approves, number assigned, bill locks</span><span class="pill wait">Waiting for customer</span></div>
+      <div class="state"><span class="pill wait">Waiting for customer</span><span class="arrow"><b>→</b> order date entered</span><span class="pill won">Won = Project</span><span class="arrow"><b>→</b> admin issues</span><span class="pill won">Tax invoice (final)</span></div>
+      <div class="state"><span class="pill wait">Waiting for customer</span><span class="arrow"><b>→</b> reason required</span><span class="pill lost">Lost</span><span class="arrow"><b>→</b> reopen</span><span class="pill wait">Waiting for customer</span></div>
+      <div class="state"><span class="pill won">Approved bill</span><span class="arrow"><b>→</b> revise, copy approved</span><span class="pill old">Old bill: Revised</span><span class="arrow">and</span><span class="pill won">New bill takes over</span></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>How a bill is calculated</h3>
+      <ol class="steps" style="margin-top:10px">
+        <li><div>Chargeable size = actual size + allowance (50 mm)</div></li>
+        <li><div>Piece area = width × height, rounded to 4 decimals</div></li>
+        <li><div>Amount = area × quantity × rate</div></li>
+        <li><div>GST worked out per tax rate, split CGST/SGST, or IGST on the invoice</div></li>
+        <li><div>Grand total rounded to the nearest rupee</div></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>How the money is reported</h3>
+      <p class="sub" style="margin:8px 0">Three separate views, because they answer different questions.</p>
+      <table>
+        <tr><td>Project profit</td><td>Order value before GST − vendor payments</td></tr>
+        <tr><td>Monthly accounts</td><td>Cash and online in − vendors − expenses</td></tr>
+        <tr><td>Win rate</td><td>Won ÷ (won + lost)</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="data">
+  <h2>Data model</h2>
+  <p class="sub"><code>bills</code> is the centre of the system. Bill lines are stored as JSON because they're always read and locked together with the bill.</p>
+  <div class="card">
+    <div class="grid3">
+      <div class="entity main"><h3>bills</h3><p>Customer, status, quote_status, lines_json, extras_json, totals_json, business_json snapshot, revises_id, superseded_by, invoice_number, invoice_fy, invoice_seq</p></div>
+      <div class="entity"><h3>users</h3><p>username, role, active, pass_hash, salt</p></div>
+      <div class="entity"><h3>sessions</h3><p>token_hash, user_id, expires_at</p></div>
+      <div class="entity"><h3>payments</h3><p>bill_id, date, amount, cash or online, reference</p></div>
+      <div class="entity"><h3>vendor_payments</h3><p>bill_id, vendor, amount, method</p></div>
+      <div class="entity"><h3>expenses</h3><p>date, category, amount, method</p></div>
+      <div class="entity"><h3>investments</h3><p>person, paid_for, amount</p></div>
+      <div class="entity"><h3>glass_types</h3><p>name, hsn, thickness, rate, gst_percent</p></div>
+      <div class="entity"><h3>enquiries</h3><p>name, phone, service, status</p></div>
+      <div class="entity"><h3>settings</h3><p>key and value: business details, terms, counters</p></div>
+    </div>
+    <p class="rel"><b>Relationships:</b> a user prepares and checks many bills. A bill has many payments and vendor payments. A bill can point to the bill it revises through <code>revises_id</code>, and to its replacement through <code>superseded_by</code>, which forms a version chain.</p>
+  </div>
+</section>
+
+<section id="deploy">
+  <h2>Deployment pipeline</h2>
+  <p class="sub">A simple, repeatable routine with a backup built in. Deployment is manual on purpose, so a bad push can't reach customers by itself.</p>
+  <div class="card">
+    <div class="pipe">
+      <div class="node"><b>1. Build</b><span>Change and try it locally</span></div><div class="to">→</div>
+      <div class="node"><b>2. Test</b><span>71 tests with <code>npm test</code></span></div><div class="to">→</div>
+      <div class="node"><b>3. Push</b><span>Git to GitHub main</span></div><div class="to">→</div>
+      <div class="node"><b>4. Back up</b><span>Update script copies the data</span></div><div class="to">→</div>
+      <div class="node"><b>5. Pull and build</b><span>Read-only deploy key, new Docker image</span></div><div class="to">→</div>
+      <div class="node"><b>6. Swap and check</b><span>Replaces the container, waits for healthy</span></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Database changes</h3><p class="sub" style="margin:6px 0 0">The app adds any missing tables and columns when it starts. Changes are additive, so existing data stays intact, and tests cover upgrading an older database.</p></div>
+    <div class="card"><h3>Rollback</h3><p class="sub" style="margin:6px 0 0">Check out an earlier Git commit and rebuild the container. The data lives outside the container, and a backup is taken before every update.</p></div>
+  </div>
+</section>
+
+<section id="security">
+  <h2>Security in layers</h2>
+  <p class="sub">No single control is trusted alone. Each layer limits the damage if another one fails.</p>
+  <div class="layer"><b>Network</b><span>Firewall allows 22, 80 and 443 only. The app has no public port.</span></div>
+  <div class="layer"><b>Transport</b><span>HTTPS everywhere, with HSTS and automatic certificates.</span></div>
+  <div class="layer"><b>Passwords</b><span>scrypt with a unique salt, compared in constant time. Reset by an admin, never readable.</span></div>
+  <div class="layer"><b>Sessions</b><span>Random 32-byte token, stored only as a hash. HttpOnly, Secure, SameSite=Lax cookie, 12-hour expiry.</span></div>
+  <div class="layer"><b>Access</b><span>Server-side role checks. Partners can't approve bills, delete entries or manage users.</span></div>
+  <div class="layer"><b>Abuse limits</b><span>Failed sign-ins and enquiries are limited per visitor, with a hidden field to catch bots.</span></div>
+  <div class="layer"><b>Input and output</b><span>Parameterised SQL prevents injection. User text is escaped to prevent XSS, including on print pages.</span></div>
+  <div class="layer"><b>Containers</b><span>The app runs as a non-root user. The deploy key is read-only.</span></div>
+  <div class="layer"><b>Data on phones</b><span>The service worker caches design files only, never bills or customer data.</span></div>
+  <div class="layer"><b>Integrity</b><span>Approved bills are locked, invoice numbers are unique, and only an admin can delete money entries.</span></div>
+</section>
+
+<section id="decisions">
+  <h2>Key decisions and trade-offs</h2>
+  <p class="sub">Interviewers care more about your reasoning than your tools. Each choice fits this scale, and each one gives something up.</p>
+  <div class="card tablewrap">
+    <table class="dec">
+      <tr><th>Decision</th><th>Why</th><th>What it gives up</th><th>Change when</th></tr>
+      <tr><td>SQLite over MySQL</td><td>A few users, no separate database to run, backups are one file, fits a 1 GB server</td><td>One writer at a time, one server only</td><td>Multiple app servers or heavy concurrent writes</td></tr>
+      <tr><td>Monolith</td><td>One codebase and deployment, easy to debug and test</td><td>Can't scale parts separately</td><td>Separate teams or very different load per feature</td></tr>
+      <tr><td>Vanilla JS</td><td>No build step, few dependencies, small and fast</td><td>More manual UI code</td><td>Larger team or far more screens</td></tr>
+      <tr><td>Docker Compose</td><td>Same setup everywhere, easy rollback, data stays separate</td><td>Brief downtime on each deploy</td><td>Zero-downtime needs</td></tr>
+      <tr><td>Caddy over Nginx</td><td>Automatic HTTPS with very little configuration</td><td>Less familiar to some teams</td><td>Advanced routing needs</td></tr>
+      <tr><td>Lightsail over EC2</td><td>Fixed monthly price, simple snapshots</td><td>Less flexible networking and scaling</td><td>Load balancing or autoscaling</td></tr>
+      <tr><td>PWA over APK</td><td>One codebase, works on Android and iPhone, updates automatically</td><td>No app store listing, needs internet</td><td>Offline work or store presence</td></tr>
+      <tr><td>Bill lines as JSON</td><td>Lines are always read with the bill, and stay frozen once approved</td><td>Harder to run SQL over individual lines</td><td>Line-level analytics</td></tr>
+      <tr><td>Manual deploy, no Jenkins</td><td>Jenkins would need its own server. Manual keeps a human check.</td><td>Steps can be forgotten</td><td>Move tests to GitHub Actions next</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="stories">
+  <h2>STAR stories</h2>
+  <p class="sub">Real problems from this project, ready to tell.</p>
+  <div class="grid2">
+    <div class="card"><h3>Correcting locked bills without losing money records</h3><div class="star" style="margin-top:10px">
+      <p><i>S</i><span>Approved bills are locked, but real mistakes still happen after payments are recorded.</span></p>
+      <p><i>T</i><span>Allow corrections without editing history or losing payments.</span></p>
+      <p><i>A</i><span>Added revisions: an editable copy linked to the original. One transaction on approval moves payments and costs, then marks the old bill replaced.</span></p>
+      <p><i>R</i><span>History stays intact, reports count only the latest version, and tests cover repeated revisions.</span></p>
+    </div></div>
+    <div class="card"><h3>Matching real-world billing exactly</h3><div class="star" style="margin-top:10px">
+      <p><i>S</i><span>The bills had to match an existing supplier format to the paisa.</span></p>
+      <p><i>T</i><span>Work out the hidden rounding rules from a sample invoice.</span></p>
+      <p><i>A</i><span>Reverse-engineered the sample, found area was rounded per piece, and wrote tests using its printed figures.</span></p>
+      <p><i>R</i><span>The system reproduced every figure on the sample bill, and tests now protect that logic.</span></p>
+    </div></div>
+    <div class="card"><h3>A bug that only appeared behind the proxy</h3><div class="star" style="margin-top:10px">
+      <p><i>S</i><span>Behind a proxy, every visitor looks like one IP address.</span></p>
+      <p><i>T</i><span>Stop one person's failed sign-ins from locking out everyone.</span></p>
+      <p><i>A</i><span>Configured trusted proxy handling, added a test with separate visitors, and later made successful sign-ins clear failed attempts.</span></p>
+      <p><i>R</i><span>Limits now apply per visitor, and normal use no longer triggers lockouts.</span></p>
+    </div></div>
+    <div class="card"><h3>Testing beyond automated checks</h3><div class="star" style="margin-top:10px">
+      <p><i>S</i><span>A full review at four screen sizes passed, but a screenshot showed a squashed dropdown on phones.</span></p>
+      <p><i>T</i><span>Find out why the check missed it, and stop it happening again.</span></p>
+      <p><i>A</i><span>Traced it to a desktop rule leaking into the phone layout, fixed it, and added a new check for narrow controls.</span></p>
+      <p><i>R</i><span>All 92 page-and-size checks pass, and that type of bug now gets caught.</span></p>
+    </div></div>
+  </div>
+</section>
+
+<section id="limits">
+  <h2>Known limits and how to scale</h2>
+  <p class="sub">Being honest about weaknesses shows engineering judgement. Say what you would change, and when.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Known limits today</h3>
+      <table style="margin-top:8px">
+        <tr><td>Single server</td><td>If it fails, the site is down until restored</td></tr>
+        <tr><td>Deploy downtime</td><td>A brief outage on each update</td></tr>
+        <tr><td>Rate limits in memory</td><td>They reset on restart and work on one server only</td></tr>
+        <tr><td>No CI yet</td><td>Tests are run by hand before pushing</td></tr>
+        <tr><td>No monitoring</td><td>Nothing alerts on downtime yet</td></tr>
+        <tr><td>Sydney region</td><td>Slower for India, and Mumbai is planned</td></tr>
+        <tr><td>No credit notes</td><td>Issued invoices can't be reversed in the app</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Scaling path, only when needed</h3>
+      <ol class="steps" style="margin-top:10px">
+        <li><div><b>Now:</b> add CI tests, uptime monitoring and off-site backups</div></li>
+        <li><div><b>More traffic:</b> larger server, CDN for images</div></li>
+        <li><div><b>Several servers:</b> move to managed PostgreSQL or MySQL, with shared rate limits in Redis</div></li>
+        <li><div><b>High availability:</b> load balancer with two app servers and rolling deploys</div></li>
+        <li><div><b>Much larger:</b> split only the parts that need it</div></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="qa">
+  <h2>Interview Q&amp;A</h2>
+  <p class="sub">Tap a question to see a short answer. Practise saying them in your own words.</p>
+  <details><summary>Why SQLite in production?</summary><p>The workload is a handful of users and low write volume, so a separate database server would add cost and failure points with no benefit. WAL mode allows reads during writes. I accepted the single-server limit and documented when I'd move to a client-server database.</p></details>
+  <details><summary>How do you keep bill numbers unique and gap-free?</summary><p>Numbers are assigned at approval inside a database transaction, not when a draft is created, so deleted drafts leave no gaps. Invoice numbers restart each financial year and have a unique index as a final guard.</p></details>
+  <details><summary>How do you stop someone changing an approved bill?</summary><p>The API rejects edits to approved bills, so it doesn't rely on the screen. Changes go through a revision, which keeps the original. A snapshot of business details is also stored at approval, so later settings changes can't alter old bills.</p></details>
+  <details><summary>Why are bill lines stored as JSON?</summary><p>They're always read together with the bill and must stay frozen after approval. JSON keeps that simple. The trade-off is harder line-level reporting, which I'd handle with a separate lines table if that need appeared.</p></details>
+  <details><summary>How are passwords and sessions handled?</summary><p>Passwords use scrypt with a unique salt and a constant-time comparison. Sessions are random tokens stored only as SHA-256 hashes, so a database leak doesn't expose live sessions. Cookies are HttpOnly, Secure and SameSite=Lax.</p></details>
+  <details><summary>How do you protect against CSRF and XSS?</summary><p>For CSRF, I rely on SameSite=Lax cookies and JSON API requests. A dedicated CSRF token would be a further hardening step. For XSS, all user text is escaped before rendering, and a test covers it on print pages. A Content Security Policy is a good next improvement.</p></details>
+  <details><summary>What happens if the server dies?</summary><p>Code is on GitHub and server snapshots are stored separately. I can restore a snapshot, or build a new server from the runbook, restore the database and point DNS at it. Data since the last backup could be lost, which is the main recovery risk today.</p></details>
+  <details><summary>How do you handle database changes on deployment?</summary><p>The app checks for missing tables and columns at startup and adds them. Changes are additive, so rollback stays possible, and there's a test that upgrades an older database. A versioned migration tool would be the next step as the schema grows.</p></details>
+  <details><summary>What does the service worker do?</summary><p>It makes the dashboard installable and shows an offline page. It deliberately avoids caching API responses, because financial data shouldn't stay on phones. It uses network-first for design files, so updates arrive immediately.</p></details>
+  <details><summary>How is this tested?</summary><p>71 automated tests cover calculations, permissions, workflows, migrations and backups, running against a real in-memory database. I also ran browser checks across 23 pages at four screen sizes, checking for errors, overflow and broken images, plus a manual screenshot review.</p></details>
+  <details><summary>Why not Jenkins?</summary><p>Jenkins needs its own server and ongoing upkeep, which isn't justified for one small app. GitHub Actions is the better next step: automatic tests on every push, then a manual deploy button.</p></details>
+  <details><summary>What would you do differently?</summary><p>I'd add CI and monitoring earlier, use a versioned migration tool from the start, and design revisions and tax invoices at the beginning, because they were added after real business needs came up.</p></details>
+  <details><summary>What was the hardest part?</summary><p>Modelling the real business correctly rather than the code itself. Things like an approved bill not meaning a won order, and corrections needing to preserve history, only became clear by following the real process.</p></details>
+</section>
+
+<section id="tips">
+  <h2>How to present this</h2>
+  <div class="grid2">
+    <div class="card"><h3>A 5-minute walkthrough</h3><ol class="steps" style="margin-top:10px">
+      <li><div>Business problem and users</div></li>
+      <li><div>Architecture diagram, from the top down</div></li>
+      <li><div>One request, step by step</div></li>
+      <li><div>One hard problem as a STAR story</div></li>
+      <li><div>Trade-offs and what you'd change</div></li>
+    </ol></div>
+    <div class="card"><h3>Before the interview</h3><p class="sub" style="margin:8px 0 0"><span class="tag">Be honest</span></p><p class="sub" style="margin:8px 0 0">Open the code and be ready to explain anything here in your own words, especially the approval transaction and session handling. If tools helped you build it, say so and explain the decisions you made. Don't claim scale it hasn't had. Avoid showing customer data, passwords or live server details.</p></div>
+  </div>
+</section>
+
+</div></main>
+<footer>Safe View architecture guide. This page works offline.</footer>
+</body>
+</html>
