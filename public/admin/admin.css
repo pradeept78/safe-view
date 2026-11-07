@@ -365,3 +365,24 @@ button.link{padding:9px 4px;margin:-9px 0}
 .tabbar button{position:relative}
 .tabbar button .count{position:absolute;top:2px;left:calc(50% + 7px)}
 .sheet-panel a .count{margin-left:auto}
+
+/* Designed dropdowns, the same height as text boxes */
+input:not([type=checkbox]),select{min-height:44px}
+select{
+  -webkit-appearance:none;appearance:none;
+  padding-right:38px!important;
+  text-overflow:ellipsis;
+  background-color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235f6b7c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  background-size:16px;
+  cursor:pointer;
+}
+select:hover:not(:disabled){border-color:#a9b3c0}
+select:disabled{background-color:#f3f5f8;cursor:default}
+.lines input,.lines select{min-height:40px}
+.entry label,.grid label,.finder label,.range label{display:flex;flex-direction:column;justify-content:flex-end}
+@media (max-width:1180px){.lines select{padding-right:30px!important;background-position:right 8px center}}
+@media (max-width:640px){.lines input,.lines select{min-height:44px}}
+input[type=checkbox],.lines input[type=checkbox]{width:20px;height:20px;min-width:0;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--green)}
