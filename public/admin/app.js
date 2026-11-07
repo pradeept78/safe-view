@@ -40,6 +40,9 @@ const ICONS = {
 
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
+  const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
+  const more = [['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users']] : []), ['settings', 'Settings'], ['account', 'My Account']];
+  const moreActive = more.some(([hash]) => hash === active);
   root.innerHTML = `
     <div class="layout">
       <aside class="side">
@@ -52,15 +55,44 @@ function shell(active, content) {
         </div>
       </aside>
       <main class="wrap">${content}</main>
+      <nav class="tabbar" aria-label="Main">
+        ${tab('bills', 'Bills')}${tab('quotations', 'Quotes')}${tab('projects', 'Projects')}${tab('accounts', 'Accounts')}
+        <button type="button" class="${moreActive ? 'on' : ''}" id="moreBtn" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.500"/><circle cx="12" cy="12" r="1.500"/><circle cx="19" cy="12" r="1.500"/></svg>More</button>
+      </nav>
+      <div class="sheet" id="moreSheet" hidden>
+        <div class="sheet-panel">
+          <p class="sheet-who">${esc(me.name)} · ${me.role === 'admin' ? 'Admin' : 'Partner'}</p>
+          ${more.map(([hash, label]) => link(hash, label)).join('')}
+          <button type="button" id="sheetLogout">Sign out</button>
+        </div>
+      </div>
     </div>`;
-  document.getElementById('logout').onclick = async () => {
+  const sheet = document.getElementById('moreSheet');
+  const moreBtn = document.getElementById('moreBtn');
+  const toggleSheet = (open) => { sheet.hidden = !open; moreBtn.setAttribute('aria-expanded', String(open)); };
+  moreBtn.onclick = () => toggleSheet(sheet.hidden);
+  sheet.onclick = (event) => { if (event.target === sheet || event.target.closest('a')) toggleSheet(false); };
+  const signOut = async () => {
     await api('/api/logout', 'POST');
     me = null;
     renderLogin();
   };
+  document.getElementById('logout').onclick = signOut;
+  document.getElementById('sheetLogout').onclick = signOut;
+}
+
+function showToast(message) {
+  document.querySelector('.toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.setAttribute('role', 'status');
+  toast.textContent = message;
+  document.body.append(toast);
+  setTimeout(() => toast.remove(), 2600);
 }
 
 function showAlert(id, message, kind = 'bad') {
+  if (message && kind === 'good') return showToast(message);
   const box = document.getElementById(id);
   if (box) box.innerHTML = message ? `<div class="alert ${kind}">${esc(message)}</div>` : '';
 }
@@ -114,7 +146,7 @@ async function billsPage() {
     </div>
     ${me.role === 'admin' && waiting ? `<div class="alert warn">${waiting} bill${waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
     <div class="card scroll">
-      ${bills.length ? `<table><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>`
+      ${bills.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>`
     : '<p class="muted">No bills yet. Choose New Bill to make the first one.</p>'}
     </div>`);
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/bill/${row.dataset.id}`; }; });
@@ -178,7 +210,7 @@ async function billPage(id) {
     <div class="card"><div class="totals" id="totals"></div></div>
     <div id="decision"></div>
     ${bill ? `<p class="muted">Prepared by ${esc(bill.preparedBy)}${bill.checkedBy ? ` · Checked by ${esc(bill.checkedBy)}` : ''}</p>` : ''}
-    <div class="acts" id="acts"></div>`);
+    <div class="savebar"><div class="savetotal" id="saveTotal"></div><div class="acts" id="acts"></div></div>`);
 
   function blankLine(type) {
     return {
@@ -241,6 +273,7 @@ async function billPage(id) {
     const box = document.getElementById('totals');
     if (state.lines.some((line) => !line.widthMm || !line.heightMm)) {
       box.innerHTML = '<p class="muted">Enter the sizes to see the total.</p>';
+      document.getElementById('saveTotal').textContent = '';
       return;
     }
     try {
@@ -253,6 +286,7 @@ async function billPage(id) {
         row.querySelector('[data-amount]').textContent = money(line.amount);
       });
       const t = result.totals;
+      document.getElementById('saveTotal').textContent = `Total ${money(t.grandTotal)}`;
       box.innerHTML = `
         <div><span>Total area</span><span>${t.areaSqm} sq m (${t.sqft} sq ft)</span></div>
         <div><span>Total weight</span><span>${t.weightKg} kg</span></div>
@@ -744,7 +778,7 @@ async function quotationsPage() {
           ${[['all', 'All'], ['waiting', 'Waiting for customer'], ['won', 'Won'], ['lost', 'Lost']].map(([value, label]) => `<option value="${value}" ${report.status === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
-      ${shown.length ? `<div class="scroll"><table><tr><th>Bill</th><th>Customer</th><th>Sent</th><th>Status</th><th>Reason</th><th class="n">Value</th></tr>${rows}</table></div>` : '<p class="muted">No quotations to show. Approved bills appear here.</p>'}
+      ${shown.length ? `<div class="scroll"><table class="compact"><tr><th>Bill</th><th>Customer</th><th>Sent</th><th>Status</th><th>Reason</th><th class="n">Value</th></tr>${rows}</table></div>` : '<p class="muted">No quotations to show. Approved bills appear here.</p>'}
     </div>`);
   document.getElementById('range').onsubmit = (event) => {
     event.preventDefault();
@@ -759,6 +793,7 @@ async function quotationsPage() {
 
 // ----- Shared pieces for money pages -----
 const today = () => new Date().toLocaleDateString('en-CA');
+const addOpen = () => (window.innerWidth > 640 ? 'open' : '');
 const shortDate = (date) => (date ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '–');
 const methodBadge = (method) => `<span class="badge ${method === 'cash' ? 'cash' : 'online'}">${method === 'cash' ? 'Cash' : 'Online'}</span>`;
 const methodSelect = '<label>Paid by<select name="method"><option value="cash">Cash</option><option value="online">Online</option></select></label>';
@@ -776,8 +811,8 @@ function wireMoneyPage(redraw) {
         showAlert('msg', 'Saved', 'good');
       } catch (error) {
         showAlert('msg', error.message);
+        window.scrollTo(0, 0);
       }
-      window.scrollTo(0, 0);
     };
   });
   root.querySelectorAll('[data-delete]').forEach((button) => {
@@ -812,7 +847,7 @@ async function projectsPage() {
       ${stat('Profit before shop expenses', money(total('profit')))}
     </div>
     <div class="card scroll">
-      ${projects.length ? `<table><tr><th>Bill</th><th>Customer</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
+      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
     : '<p class="muted">Quotations appear here as projects once they are marked as won.</p>'}
     </div>`);
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
@@ -857,26 +892,26 @@ async function projectPage(id) {
     <div class="card">
       <h2>Customer payments</h2>
       ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
-      ${p.balance > 0 ? `<form class="entry" data-post="/api/projects/${p.id}/payments">
+      ${p.balance > 0 ? `<details class="adder" ${addOpen()}><summary>+ Add Payment</summary><form class="entry" data-post="/api/projects/${p.id}/payments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Amount<input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
         <label>UPI or bank reference<input name="reference" maxlength="80"></label>
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Add Payment</button>
-      </form>` : '<p class="alert good">This bill is fully paid.</p>'}
+      </form></details>` : '<p class="alert good">This bill is fully paid.</p>'}
     </div>
     <div class="card">
       <h2>Vendor payments</h2>
       ${p.vendorPayments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Vendor</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No vendor payments yet.</p>'}
-      <form class="entry" data-post="/api/projects/${p.id}/vendor-payments">
+      <details class="adder" ${addOpen()}><summary>+ Add Vendor Payment</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-payments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Vendor<input name="vendor" maxlength="120" required></label>
         <label>Paid for<input name="description" maxlength="200"></label>
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
         <button class="btn main">Add Vendor Payment</button>
-      </form>
+      </form></details>
     </div>`);
   document.getElementById('order').onsubmit = async (event) => {
     event.preventDefault();
@@ -929,7 +964,7 @@ async function accountsPage() {
     <div class="card">
       <h2>Shop expenses</h2>
       ${a.expenses.length ? `<div class="scroll"><table><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <form class="entry" data-post="/api/expenses">
+      <details class="adder" ${addOpen()}><summary>+ Add Expense</summary><form class="entry" data-post="/api/expenses">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Category<input name="category" list="categories" maxlength="60" required></label>
         <datalist id="categories">${EXPENSE_CATEGORIES.map((c) => `<option value="${c}">`).join('')}</datalist>
@@ -937,7 +972,7 @@ async function accountsPage() {
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
         <button class="btn main">Add Expense</button>
-      </form>
+      </form></details>
     </div>`);
   document.getElementById('month').onchange = (event) => {
     if (!event.target.value) return;
@@ -968,7 +1003,7 @@ async function investmentPage() {
     <div class="card">
       <h2>Investment entries</h2>
       ${data.entries.length ? `<div class="scroll"><table><tr><th>Date</th><th>Who paid</th><th>Paid for</th><th>Paid by</th><th>Note</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <form class="entry" data-post="/api/investments">
+      <details class="adder" ${addOpen()}><summary>+ Add Investment</summary><form class="entry" data-post="/api/investments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Who paid<select name="person" required>${data.people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>
         <label>Paid for<input name="paidFor" maxlength="200" list="purposes" required></label>
@@ -977,7 +1012,7 @@ async function investmentPage() {
         ${methodSelect}
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Add Investment</button>
-      </form>
+      </form></details>
     </div>`);
   wireMoneyPage(investmentPage);
 }

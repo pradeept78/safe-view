@@ -181,3 +181,68 @@ td.loss{color:var(--red);font-weight:700}
   .sub-grid input{text-align:left}
   .btn.small{padding:8px 12px}
 }
+
+/* Mobile app feel */
+.tabbar,.sheet{display:none}
+.savetotal{display:none}
+.adder>summary{list-style:none;cursor:pointer}
+.adder>summary::-webkit-details-marker{display:none}
+.adder[open]>summary{display:none}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:40;max-width:calc(100vw - 32px);padding:11px 18px;border-radius:999px;background:#10231a;color:#d9f0e3;font-size:14px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.3);animation:toast .2s ease-out}
+@keyframes toast{from{opacity:0;transform:translate(-50%,8px)}}
+
+@media (max-width:860px){
+  .side{position:sticky;top:0;z-index:5;padding:8px 14px}
+  .side nav{display:none}
+  .side img{width:118px}
+  .who{margin-left:auto}
+  .who #logout{display:none}
+  .wrap{padding:18px 14px calc(92px + env(safe-area-inset-bottom))}
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(5,1fr);background:rgba(13,20,32,.97);border-top:1px solid rgba(255,255,255,.1);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  .tabbar a,.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:48px;justify-content:center;background:none;border:0;border-radius:10px;color:#9aa6b6;font:600 11px var(--sans);text-decoration:none;cursor:pointer}
+  .tabbar svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tabbar .on{color:var(--gold2)}
+  .sheet:not([hidden]){display:block;position:fixed;inset:0;z-index:15;background:rgba(5,9,15,.55)}
+  .sheet-panel{position:absolute;left:0;right:0;bottom:calc(61px + env(safe-area-inset-bottom));background:#fff;border-radius:18px 18px 0 0;padding:14px 14px 10px;display:grid;gap:2px;animation:sheet .18s ease-out}
+  @keyframes sheet{from{transform:translateY(16px);opacity:0}}
+  .sheet-who{margin:0 8px 8px;color:var(--muted);font-size:13px}
+  .sheet-panel a,.sheet-panel button{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 10px;border:0;border-radius:10px;background:none;color:var(--ink);font:600 15px var(--sans);text-decoration:none;text-align:left;cursor:pointer}
+  .sheet-panel a svg{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .sheet-panel a.on{background:#fbf5e4}
+  .sheet-panel button{color:var(--red);border-top:1px solid var(--line);border-radius:0;margin-top:4px}
+  .savebar{position:sticky;bottom:calc(61px + env(safe-area-inset-bottom));z-index:6;margin:8px -14px -14px;padding:10px 14px;background:rgba(255,255,255,.97);border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(16,24,40,.06)}
+  .savetotal:not(:empty){display:block;font-weight:800;font-size:15px;margin-bottom:8px;text-align:right}
+  .toast{bottom:calc(76px + env(safe-area-inset-bottom))}
+}
+
+@media (max-width:640px){
+  h1{font-size:28px}
+  .head{margin-bottom:14px}
+  .head .btn.main{padding:9px 14px}
+  .card{padding:15px;border-radius:12px;margin-bottom:12px}
+  .stats{gap:10px;margin-bottom:12px}
+  .btn{min-height:44px}
+  .btn.small{min-height:38px}
+  .adder>summary{display:flex;align-items:center;justify-content:center;min-height:46px;margin-top:12px;border:1px dashed #c9a24b;border-radius:10px;color:#7a5a12;font-weight:700;background:#fdf9ee}
+  .adder .entry{margin-top:12px;padding-top:0;border-top:0}
+  .scroll td .btn.danger{font-size:0;padding:0 14px}
+  .scroll td .btn.danger::after{content:'Remove';font-size:13px}
+
+  /* Short cards for the main lists */
+  .scroll table.compact tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;padding:12px 14px}
+  .scroll table.compact tr:has(> th){display:none}
+  .scroll table.compact td{display:block;padding:0;text-align:left}
+  .scroll table.compact td::before{display:none}
+  .scroll table.compact td[data-label="Customer"]{grid-area:1/1;font-weight:700;font-size:15px}
+  .scroll table.compact td[data-label="Status"]{grid-area:1/2;text-align:right}
+  .scroll table.compact td[data-label="Profit"]{grid-area:1/2;text-align:right}
+  .scroll table.compact td[data-label="Profit"]::before{display:inline;content:'Profit ';max-width:none;color:var(--muted);font-weight:600}
+  .scroll table.compact td[data-label="Bill"]{grid-area:2/1;color:var(--muted);font-size:13px}
+  .scroll table.compact td[data-label="Total"],.scroll table.compact td[data-label="Value"]{grid-area:2/2;text-align:right;font-weight:700}
+  .scroll table.compact td[data-label="Balance"]{grid-area:2/2;text-align:right;font-weight:700}
+  .scroll table.compact td[data-label="Balance"]::before{display:inline;content:'Balance ';max-width:none;color:var(--muted);font-weight:600}
+  .scroll table.compact td[data-label="Reason"]{grid-column:1/-1;font-size:13px;color:#8c1d18}
+  .scroll table.compact td[data-label="Reason"]:empty{display:none}
+  .scroll table.compact td[data-label="Reason"] .muted{text-align:left}
+  .scroll table.compact td[data-label="Prepared by"],.scroll table.compact td[data-label="Sent"],.scroll table.compact td[data-label="Order accepted"],.scroll table.compact td[data-label="Bill total"],.scroll table.compact td[data-label="Received"],.scroll table.compact td[data-label="Vendors"]{display:none}
+}

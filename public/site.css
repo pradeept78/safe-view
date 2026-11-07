@@ -29,6 +29,9 @@ h1 em,h2 em{font-style:italic;color:var(--gold2)}
 .nav .nav-cta{border:1px solid rgba(201,162,75,.6);padding:9px 18px;border-radius:999px;color:var(--gold2)}
 .nav .nav-cta:hover{background:var(--gold);color:#17120a}
 
+.menu-btn{display:none;gap:4px;align-content:center;justify-items:center;width:44px;height:44px;padding:0;background:none;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.menu-btn span{display:block;width:20px;height:2px;border-radius:2px;background:var(--gold2);transition:transform .2s,opacity .2s}
+
 /* Buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font:600 15px var(--sans);padding:15px 28px;border-radius:999px;border:1px solid transparent;text-decoration:none;cursor:pointer;transition:transform .2s,box-shadow .2s,background .2s}
 .btn:hover{transform:translateY(-2px)}
@@ -148,12 +151,19 @@ footer{padding:44px var(--gut) 26px;background:#070b12;border-top:1px solid var(
   .why,.contact{grid-template-columns:1fr}
 }
 @media (max-width:720px){
-  .nav nav a:not(.nav-cta){display:none}
+  .menu-btn{display:grid}
+  .nav nav{display:none;position:absolute;left:0;right:0;top:100%;flex-direction:column;align-items:stretch;gap:0;padding:6px var(--gut) 18px;background:rgba(10,15,24,.97);border-bottom:1px solid var(--line);font-size:17px}
+  .nav.menu-open{background:rgba(10,15,24,.97);-webkit-backdrop-filter:none;backdrop-filter:none}
+  .nav.menu-open nav{display:flex}
+  .nav nav a{padding:14px 0;border-bottom:1px solid var(--line)}
+  .nav .nav-cta{margin-top:14px;padding:13px;border:0;border-radius:999px;text-align:center;font-weight:700;background:linear-gradient(135deg,#f0d995,#c9a24b);color:#17120a}
+  .nav.menu-open .menu-btn span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+  .nav.menu-open .menu-btn span:nth-child(2){opacity:0}
+  .nav.menu-open .menu-btn span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
   .brand .em{height:42px}
   .brand .wd{height:30px}
 }
 @media (max-width:560px){
-  .nav-cta{padding:8px 13px;font-size:13px}
   .brand .em{display:none}
   .hero-cta .btn{width:100%}
   .t1,.t2{min-height:320px}
