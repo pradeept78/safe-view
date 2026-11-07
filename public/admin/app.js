@@ -57,6 +57,7 @@ function shell(active, content) {
     <div class="layout">
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
+        <button type="button" class="quick-btn" id="quickAdd"><span aria-hidden="true">+</span> Quick add</button>
         <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
@@ -88,6 +89,7 @@ function shell(active, content) {
     me = null;
     renderLogin();
   };
+  document.getElementById('quickAdd').onclick = () => openQuickAdd();
   document.getElementById('logout').onclick = signOut;
   document.getElementById('sheetLogout').onclick = signOut;
   showEnquiryBadge();
@@ -1057,28 +1059,104 @@ const shortMoney = (value) => {
 const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 const monthLong = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-// Bars are plain HTML, so they stay readable at any width and need no chart library.
-function monthlyBars(months, key, title, kind, emptyText) {
-  const values = months.map((m) => m[key]);
-  const top = Math.max(0, ...values);
-  const bottom = Math.min(0, ...values);
-  const span = top - bottom || 1;
-  const hasData = values.some((value) => value !== 0);
-  const bars = months.map((m) => {
-    const value = m[key];
-    const height = Math.abs(value) / span * 100;
-    const base = (0 - bottom) / span * 100;
-    const position = value >= 0 ? `bottom:${base}%` : `bottom:${base - height}%`;
-    return `<button type="button" class="bar-col" aria-label="${esc(monthLong(m.month))}: ${esc(money(value))}">
-      <span class="bar-area"><span class="zero-line" style="bottom:${base}%"></span><span class="bar ${kind} ${value < 0 ? 'negative' : ''}" style="${position};height:${value ? Math.max(height, 1.5) : 0}%"></span></span>
-      <span class="bar-month">${esc(monthName(m.month))}</span>
-      <span class="bar-tip">${esc(monthLong(m.month))}<b>${esc(money(value))}</b></span>
-    </button>`;
-  }).join('');
+const wholeMoney = (value) => money(Math.round(value)).replace(/\.00$/, '');
+const kpi = (label, value, note, tone) => `<div class="kpi ${tone}"><small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
+
+// Rounds a chart's top up to a tidy number, so the scale reads ₹50K and not ₹47.3K.
+function tidyTop(value) {
+  if (value <= 0) return 1;
+  const step = 10 ** Math.floor(Math.log10(value));
+  const scaled = value / step;
+  return [1, 1.5, 2, 3, 4, 5, 6, 8, 10].find((tidy) => scaled <= tidy) * step;
+}
+
+function trendCard(months) {
+  const best = months.reduce((top, month) => (month.sales > top.sales ? month : top), months[0]);
+  const hasData = months.some((month) => month.sales !== 0 || month.confirmedProfit !== 0);
   return `<div class="card chart">
-    <div class="chart-head"><h2>${esc(title)}</h2><span class="muted">Last 12 months</span></div>
-    ${hasData ? `<div class="chart-scale"><span>Highest ${esc(shortMoney(top))}</span>${bottom < 0 ? `<span>Lowest ${esc(shortMoney(bottom))}</span>` : ''}</div>
-    <div class="bars">${bars}</div>` : `<p class="muted chart-empty">${esc(emptyText)}</p>`}
+    <div class="chart-head"><h2>Sales and profit</h2><span class="muted">Last 12 months</span></div>
+    ${hasData ? `<p class="chart-note">${best.sales > 0 ? `Best month: <b>${esc(monthLong(best.month))}, ${esc(wholeMoney(best.sales))}</b> in sales.` : 'No sales in these months.'}</p>
+    <div class="legend"><span><i class="sales"></i>Sales</span><span><i class="profit"></i>Confirmed profit</span><span class="readout" id="trendReadout"></span></div>
+    <div class="trend" id="trend" tabindex="0" role="img" aria-label="Sales and confirmed profit for the last 12 months. Use the left and right arrow keys to read a month."></div>`
+    : '<p class="muted chart-empty">Nothing to show yet. This fills in as you win orders and complete projects.</p>'}
+  </div>`;
+}
+
+// Drawn at the real pixel width, so labels stay the same size on a phone.
+function wireTrend(months) {
+  const box = document.getElementById('trend');
+  if (!box) return;
+  const readout = document.getElementById('trendReadout');
+  const last = months.length - 1;
+  let picked = last;
+  let drawnWidth = 0;
+  const left = 48;
+  const right = 14;
+  const draw = () => {
+    const width = box.clientWidth;
+    if (!width) return;
+    drawnWidth = width;
+    const height = width < 480 ? 190 : 230;
+    const floor = height - 26;
+    const values = months.flatMap((month) => [month.sales, month.confirmedProfit]);
+    const top = tidyTop(Math.max(...values, 0));
+    const lowest = Math.min(...values, 0);
+    const bottom = lowest < 0 ? -tidyTop(-lowest) : 0;
+    const x = (index) => left + (index * (width - left - right)) / last;
+    const y = (value) => 14 + ((top - value) / (top - bottom)) * (floor - 14);
+    const line = (key) => months.map((month, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(month[key]).toFixed(1)}`).join(' ');
+    const area = `${line('sales')} L${x(last).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+    const every = width < 480 ? 3 : width < 700 ? 2 : 1;
+    const month = months[picked];
+    box.innerHTML = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+      <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2f6fb0" stop-opacity=".24"/><stop offset="100%" stop-color="#2f6fb0" stop-opacity="0"/></linearGradient></defs>
+      ${[...new Set([top, top / 2, 0, bottom])].map((tick) => `<line class="grid-line" x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}"/><text class="axis" x="${left - 8}" y="${y(tick) + 4}" text-anchor="end">${esc(shortMoney(tick).replace('.0', ''))}</text>`).join('')}
+      <path d="${area}" fill="url(#salesFill)"/>
+      <path class="trend-line sales" d="${line('sales')}"/>
+      <path class="trend-line profit" d="${line('confirmedProfit')}"/>
+      <line class="pick-line" x1="${x(picked)}" x2="${x(picked)}" y1="14" y2="${floor}"/>
+      <circle class="pick-dot sales" cx="${x(picked)}" cy="${y(month.sales)}" r="5"/>
+      <circle class="pick-dot profit" cx="${x(picked)}" cy="${y(month.confirmedProfit)}" r="5"/>
+      ${months.map((item, index) => ((last - index) % every ? '' : `<text class="axis" x="${x(index)}" y="${height - 6}" text-anchor="${index === last ? 'end' : index === 0 ? 'start' : 'middle'}">${esc(monthName(item.month))}</text>`)).join('')}
+    </svg>`;
+    readout.textContent = `${monthLong(month.month)}: ${wholeMoney(month.sales)} sales, ${wholeMoney(month.confirmedProfit)} profit`;
+  };
+  const pick = (index) => {
+    const next = Math.max(0, Math.min(last, index));
+    if (next !== picked) { picked = next; draw(); }
+  };
+  const pointAt = (event) => {
+    const offset = event.clientX - box.getBoundingClientRect().left - left;
+    pick(Math.round((offset / (box.clientWidth - left - right)) * last));
+  };
+  box.onpointermove = pointAt;
+  box.onpointerdown = pointAt;
+  box.onpointerleave = (event) => { if (event.pointerType === 'mouse') pick(last); };
+  box.onkeydown = (event) => {
+    if (event.key === 'ArrowLeft') pick(picked - 1);
+    if (event.key === 'ArrowRight') pick(picked + 1);
+  };
+  draw();
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (box.clientWidth !== drawnWidth) draw(); }).observe(box);
+}
+
+// These colours passed the colour-blind check together. A colour always means the same thing.
+const SPLIT_COLOURS = { Glass: '#2f6fb0', Installation: '#c9503f', Transport: '#7b5cc4', 'Other costs': '#d9a441', 'Shop expenses': '#c2559b', 'Left over': '#1f9a6a' };
+
+function splitCard(o) {
+  const head = '<div class="chart-head"><h2>Where your sales money goes</h2></div>';
+  if (o.sales <= 0) return `<div class="card chart">${head}<p class="muted chart-empty">Nothing to show yet. This fills in as you win orders.</p></div>`;
+  const { costs, expenses, left } = o.split;
+  const parts = [...costs.map(({ type, amount }) => ({ label: type, amount })), { label: 'Shop expenses', amount: expenses }, { label: 'Left over', amount: left }].filter((part) => part.amount > 0);
+  const spent = o.sales - left;
+  const share = (amount) => `${Math.round((amount / o.sales) * 100)}%`;
+  const base = Math.max(o.sales, spent);
+  return `<div class="card chart">
+    ${head}
+    <p class="chart-note">${left >= 0 ? `<b>${share(spent)}</b> spent, <b class="gain">${esc(wholeMoney(left))}</b> (${share(left)}) left from ${esc(wholeMoney(o.sales))} sales.` : `Costs and expenses are <b class="loss">${esc(wholeMoney(-left))}</b> more than sales.`}</p>
+    <div class="split-bar" role="img" aria-label="Sales money split, listed below">${parts.map((part) => `<i title="${esc(part.label)} ${esc(wholeMoney(part.amount))}" style="flex-grow:${part.amount / base};background:${SPLIT_COLOURS[part.label]}"></i>`).join('')}</div>
+    <div class="split-list">${parts.map((part) => `<div><i style="background:${SPLIT_COLOURS[part.label]}"></i><span>${esc(part.label)}</span><b>${esc(wholeMoney(part.amount))}</b><small>${share(part.amount)}</small></div>`).join('')}</div>
+    <p class="muted split-help">Includes projects still in progress, so this can change.</p>
   </div>`;
 }
 
@@ -1089,15 +1167,15 @@ async function overviewPage() {
   const tableRows = o.months.map((m) => `<tr><td>${esc(monthLong(m.month))}</td><td class="n">${money(m.sales)}</td><td class="n">${money(m.confirmedProfit)}</td><td class="n">${money(m.expenses)}</td><td class="n">${money(m.net)}</td></tr>`).join('');
   shell('overview', `
     <div class="head"><h1>Overview</h1></div>
-    <div class="stats">
-      ${stat('Total sales', money(o.sales), true)}
-      ${stat('Confirmed profit', money(o.confirmedProfit))}
-      ${stat('Expected profit', money(o.expectedProfit))}
-      ${stat('Total investment', money(o.investment))}
+    <div class="kpis">
+      ${kpi('Total sales', wholeMoney(o.sales), `${o.orders} ${o.orders === 1 ? 'order' : 'orders'} won, before GST`, 'blue')}
+      ${kpi('Confirmed profit', wholeMoney(o.confirmedProfit), `${o.completed} completed`, o.confirmedProfit < 0 ? 'red' : 'green')}
+      ${kpi('Expected profit', wholeMoney(o.expectedProfit), `${o.inProgress} in progress`, o.expectedProfit < 0 ? 'red' : 'amber')}
+      ${kpi('Money to collect', wholeMoney(o.toCollect), `${wholeMoney(o.received)} received of ${wholeMoney(o.billed)}`, 'red')}
     </div>
     <div class="charts">
-      ${monthlyBars(o.months, 'sales', 'Sales by month', 'sales', 'Nothing to show yet. This fills in as you win orders.')}
-      ${monthlyBars(o.months, 'confirmedProfit', 'Confirmed profit by month', 'profit', 'Nothing to show yet. This fills in as you complete projects.')}
+      ${trendCard(o.months)}
+      ${splitCard(o)}
     </div>
     <div class="grid3-cards">
       <div class="card"><h2>Profit</h2><div class="totals plain">
@@ -1128,6 +1206,7 @@ async function overviewPage() {
       <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Confirmed profit</th><th class="n">Expenses</th><th class="n">After expenses</th></tr>${tableRows}</table></div>
     </details>
     <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as project costs arrive. This is a guide for running the shop, not an accounting statement.</p>`);
+  wireTrend(o.months);
 }
 
 // ----- Quotation report -----
@@ -1232,7 +1311,6 @@ async function quotationsPage() {
 
 // ----- Shared pieces for money pages -----
 const today = () => new Date().toLocaleDateString('en-CA');
-const addOpen = () => (window.innerWidth > 640 ? 'open' : '');
 const shortDate = (date) => (date ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '–');
 const methodBadge = (method) => `<span class="badge ${method === 'cash' ? 'cash' : 'online'}">${method === 'cash' ? 'Cash' : 'Online'}</span>`;
 const methodChoice = `<fieldset class="choices pair"><legend>Paid by</legend><div class="pair-row">
@@ -1242,20 +1320,10 @@ const methodChoice = `<fieldset class="choices pair"><legend>Paid by</legend><di
 const removeButton = (kind, id) => (me.role === 'admin' ? `<button class="btn small danger" data-delete="${kind}" data-id="${id}" aria-label="Delete entry">×</button>` : '');
 const stat = (label, value, hot) => `<div class="stat ${hot ? 'hot' : ''}"><small>${esc(label)}</small><b>${esc(value)}</b></div>`;
 
-// Connects add forms and delete buttons on a money page, then redraws it.
+// Connects add and delete buttons on a money page.
 function wireMoneyPage(redraw) {
-  root.querySelectorAll('form[data-post]').forEach((form) => {
-    form.onsubmit = async (event) => {
-      event.preventDefault();
-      try {
-        await api(form.dataset.post, 'POST', Object.fromEntries(new FormData(form)));
-        await redraw();
-        showAlert('msg', 'Saved', 'good');
-      } catch (error) {
-        showAlert('msg', error.message);
-        window.scrollTo(0, 0);
-      }
-    };
+  root.querySelectorAll('[data-quick]').forEach((button) => {
+    button.onclick = () => openQuickAdd({ kind: button.dataset.quick, projectId: button.dataset.project, costId: button.dataset.cost, fixed: true });
   });
   root.querySelectorAll('[data-delete]').forEach((button) => {
     button.onclick = async () => {
@@ -1335,7 +1403,7 @@ async function projectPage(id) {
         <span><small>Paid</small>${money(x.paid)}</span>
         <span><small>Balance</small><b>${money(x.due)}</b></span>
       </div>
-      <div class="cost-actions">${x.due > 0 ? `<button type="button" class="btn small" data-pay="${x.id}">Pay</button>` : '<span class="badge approved">Paid</span>'}${x.paid === 0 ? removeButton('vendor-bills', x.id) : ''}</div>
+      <div class="cost-actions">${x.due > 0 ? `<button type="button" class="btn small" data-quick="pay" data-project="${p.id}" data-cost="${x.id}">Pay</button>` : '<span class="badge approved">Paid</span>'}${x.paid === 0 ? removeButton('vendor-bills', x.id) : ''}</div>
     </div>`).join('');
   const vendorRows = p.vendorPayments.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-payments', x.id)}</td></tr>`).join('');
@@ -1391,14 +1459,7 @@ async function projectPage(id) {
     <div class="card">
       <h2>Customer payments</h2>
       ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
-      ${p.balance > 0 ? `<details class="adder" ${addOpen()}><summary>+ Add Payment</summary><form class="entry" data-post="/api/projects/${p.id}/payments">
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label><span class="label-row">Amount<button type="button" class="link" id="fullBalance" data-balance="${p.balance}">Full balance</button></span><input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
-        ${methodChoice}
-        <label>UPI or bank reference<input name="reference" maxlength="80"></label>
-        <label>Note<input name="note" maxlength="300"></label>
-        <button class="btn main">Add Payment</button>
-      </form></details>` : '<p class="alert good">This bill is fully paid.</p>'}
+      ${p.balance > 0 ? `<div class="add-row"><button type="button" class="btn main" data-quick="payment" data-project="${p.id}">+ Add Payment</button></div>` : '<p class="alert good">This bill is fully paid.</p>'}
     </div>
     </section>
     <section ${panel('costs')}>
@@ -1407,24 +1468,7 @@ async function projectPage(id) {
       <p class="muted" style="margin:-8px 0 10px">Glass, installation, transport and anything else this job costs. Add the total once, and each payment reduces the balance.</p>
       ${p.vendorBills.length ? costRows : '<p class="muted">No costs yet.</p>'}
       ${p.vendorBills.length ? `<div class="cost-total"><span>Total ${money(p.vendorCost)}</span><span>Paid ${money(p.vendorPaid)}</span><b>Still to pay ${money(p.vendorDue)}</b></div>` : ''}
-      ${finished ? '<p class="muted" style="margin-bottom:0">Reopen this project to add a late cost.</p>' : `<details class="adder" ${addOpen()}><summary>+ Add Cost</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-bills">
-        <fieldset class="choices"><legend>Type</legend>${p.costTypes.map((type, index) => `<label><input type="radio" name="category" value="${esc(type)}" ${index ? '' : 'checked'}><span>${esc(type)}</span></label>`).join('')}</fieldset>
-        <label>Paid to<input name="vendor" maxlength="120" required></label>
-        <label>For<input name="description" maxlength="200"></label>
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Total amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        <label>Paid now (optional)<input type="number" name="paidNow" min="0" step="0.01" inputmode="decimal"></label>
-        ${methodChoice}
-        <button class="btn main">Add Cost</button>
-      </form></details>`}
-      ${unpaid.length ? `<details class="adder" id="payAdder"><summary>+ Pay a Cost</summary><form class="entry" id="payCost" data-post="/api/projects/${p.id}/vendor-payments">
-        <label>Cost<select name="vendorBillId" required>${unpaid.map((x) => `<option value="${x.id}" data-due="${x.due}">${esc(x.category)}: ${esc(x.vendor)} (${money(x.due)} left)</option>`).join('')}</select></label>
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label><span class="label-row">Amount<button type="button" class="link" id="fullCost">Full balance</button></span><input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodChoice}
-        <label>Note<input name="note" maxlength="300"></label>
-        <button class="btn main">Save Payment</button>
-      </form></details>` : ''}
+      ${finished ? `<p class="muted" style="margin-bottom:0">Reopen this project to add a late cost.</p>${unpaid.length ? `<div class="add-row"><button type="button" class="btn" data-quick="pay" data-project="${p.id}">+ Pay a Cost</button></div>` : ''}` : `<div class="add-row"><button type="button" class="btn main" data-quick="cost" data-project="${p.id}">+ Add Cost</button>${unpaid.length ? `<button type="button" class="btn" data-quick="pay" data-project="${p.id}">+ Pay a Cost</button>` : ''}</div>`}
     </div>
     <div class="card">
       <h2>Payments made</h2>
@@ -1487,37 +1531,6 @@ async function projectPage(id) {
       if (sure) setStatus({ status: 'in_progress' }, 'Project reopened');
     };
   }
-  const fullBalance = document.getElementById('fullBalance');
-  if (fullBalance) {
-    fullBalance.onclick = (event) => {
-      event.preventDefault();
-      const amount = fullBalance.closest('label').querySelector('input');
-      amount.value = fullBalance.dataset.balance;
-      amount.focus();
-    };
-  }
-  const payCost = document.getElementById('payCost');
-  if (payCost) {
-    const cost = payCost.elements.vendorBillId;
-    const amount = payCost.elements.amount;
-    const setLimit = () => { amount.max = cost.selectedOptions[0].dataset.due; };
-    setLimit();
-    cost.onchange = setLimit;
-    document.getElementById('fullCost').onclick = (event) => {
-      event.preventDefault();
-      amount.value = amount.max;
-      amount.focus();
-    };
-    root.querySelectorAll('[data-pay]').forEach((button) => {
-      button.onclick = () => {
-        cost.value = button.dataset.pay;
-        setLimit();
-        document.getElementById('payAdder').open = true;
-        payCost.scrollIntoView({ block: 'center' });
-        amount.focus({ preventScroll: true });
-      };
-    });
-  }
   wireMoneyPage(() => projectPage(id));
 }
 
@@ -1560,36 +1573,12 @@ async function accountsPage() {
     <div class="card">
       <h2>Shop expenses</h2>
       ${a.expenses.length ? `<div class="scroll"><table><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <details class="adder" ${addOpen()}><summary>+ Add Expense</summary><form class="entry" data-post="/api/expenses">
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Category<select name="category" id="categoryPick" required>
-          <option value="">Choose a category</option>
-          ${EXPENSE_CATEGORIES.map((c) => `<option>${c}</option>`).join('')}
-          <option value="${OTHER_CATEGORY}">Other (type your own)</option>
-        </select></label>
-        <label id="categoryOther" hidden>Your category<input id="categoryText" maxlength="60"></label>
-        <label>Details<input name="description" maxlength="200"></label>
-        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodChoice}
-        <button class="btn main">Add Expense</button>
-      </form></details>
+      <div class="add-row"><button type="button" class="btn main" data-quick="expense">+ Add Expense</button></div>
     </div>`);
   document.getElementById('month').onchange = (event) => {
     if (!event.target.value) return;
     chosenMonth = event.target.value;
     accountsPage();
-  };
-  // "Other" swaps the dropdown for a typed category, so only one value is sent.
-  const categoryPick = document.getElementById('categoryPick');
-  const categoryOther = document.getElementById('categoryOther');
-  const categoryText = document.getElementById('categoryText');
-  categoryPick.onchange = () => {
-    const typing = categoryPick.value === OTHER_CATEGORY;
-    categoryOther.hidden = !typing;
-    categoryText.required = typing;
-    categoryText.name = typing ? 'category' : '';
-    categoryPick.name = typing ? '' : 'category';
-    if (typing) categoryText.focus();
   };
   wireMoneyPage(accountsPage);
 }
@@ -1615,17 +1604,189 @@ async function investmentPage() {
     <div class="card">
       <h2>Investment entries</h2>
       ${data.entries.length ? `<div class="scroll"><table><tr><th>Date</th><th>Who paid</th><th>Paid for</th><th>Paid by</th><th>Note</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <details class="adder" ${addOpen()}><summary>+ Add Investment</summary><form class="entry" data-post="/api/investments">
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Who paid<select name="person" required>${data.people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>
-        <label>Paid for<input name="paidFor" maxlength="200" placeholder="Like: cutting machine" required></label>
-        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodChoice}
-        <label>Note<input name="note" maxlength="300"></label>
-        <button class="btn main">Add Investment</button>
-      </form></details>
+      <div class="add-row"><button type="button" class="btn main" data-quick="investment">+ Add Investment</button></div>
     </div>`);
   wireMoneyPage(investmentPage);
+}
+
+// ----- Quick add -----
+// Records everyday money from any page, using the same saves as the full pages.
+const QUICK_SAVE = { payment: 'Add Payment', cost: 'Add Cost', pay: 'Pay a Cost', expense: 'Add Expense', investment: 'Add Investment' };
+const QUICK_TYPES = [['payment', 'Customer payment'], ['cost', 'Project cost'], ['pay', 'Pay a cost'], ['expense', 'Shop expense'], ['investment', 'Investment'], ['bill', 'New bill']];
+
+async function openQuickAdd({ kind: firstKind = 'payment', projectId = '', costId = '', fixed = false } = {}) {
+  if (document.querySelector('.quick')) return;
+  let projects;
+  let people;
+  try {
+    [projects, { people }] = await Promise.all([api('/api/projects'), api('/api/investments')]);
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  const chosenProject = projects.find((p) => String(p.id) === String(projectId));
+  const returnFocus = document.activeElement;
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay quick-overlay';
+  overlay.innerHTML = `<div class="dialog quick" role="dialog" aria-modal="true" aria-labelledby="quickTitle">
+    <div class="quick-head"><div><h2 id="quickTitle">${fixed ? QUICK_SAVE[firstKind] : 'Quick add'}</h2>${chosenProject ? `<p class="muted">${esc(chosenProject.customerName)}, ${esc(chosenProject.number)}</p>` : ''}</div><button type="button" class="quick-close" aria-label="Close">×</button></div>
+    ${fixed ? '' : chips('quickType', 'What to add', QUICK_TYPES, firstKind)}
+    <form id="quickForm" novalidate></form>
+  </div>`;
+  document.body.append(overlay);
+  const form = overlay.querySelector('#quickForm');
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    returnFocus?.focus?.();
+  };
+  function onKey(event) {
+    if (event.key === 'Escape') close();
+    if (event.key !== 'Tab') return;
+    const items = [...overlay.querySelectorAll('button:not(:disabled), input:not([type=radio]):not(:disabled), input[type=radio]:checked, select')].filter((item) => item.offsetParent);
+    const edge = event.shiftKey ? items[0] : items[items.length - 1];
+    if (document.activeElement === edge) {
+      event.preventDefault();
+      (event.shiftKey ? items[items.length - 1] : items[0]).focus();
+    }
+  }
+  document.addEventListener('keydown', onKey);
+  overlay.onclick = (event) => { if (event.target === overlay) close(); };
+  overlay.querySelector('.quick-close').onclick = close;
+
+  const projectField = (list, note) => `<label class="wide">Project<select name="project" data-need="project"><option value="">Select project...</option>${list.map((p) => `<option value="${p.id}">${esc(p.customerName)}, ${esc(p.number)}${note ? ` (${esc(note(p))})` : ''}</option>`).join('')}</select></label>`;
+  const dateField = `<label>Date<input type="date" name="date" value="${today()}" data-need="date"></label>`;
+  const amountField = (label, full) => `<label><span class="label-row">${label}${full ? '<button type="button" class="link" id="quickFull" hidden>Full balance</button>' : ''}</span><input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" data-need="amount"></label>`;
+  const typeField = `<fieldset class="choices wide"><legend>Type</legend>${(projects[0]?.costTypes || []).map((type, index) => `<label><input type="radio" name="category" value="${esc(type)}" ${index ? '' : 'checked'}><span>${esc(type)}</span></label>`).join('')}</fieldset>`;
+  const LISTS = {
+    payment: projects.filter((p) => p.balance > 0),
+    cost: projects.filter((p) => p.status !== 'completed'),
+    pay: projects.filter((p) => p.vendorDue > 0),
+  };
+  const EMPTY = { payment: 'No project has money left to collect.', cost: 'No project is in progress.', pay: 'No project has costs left to pay.' };
+  const FIELDS = {
+    payment: () => `${projectField(LISTS.payment, (p) => `${wholeMoney(p.balance)} left`)}${amountField('Amount', true)}${dateField}${methodChoice}<label>UPI or bank reference<input name="reference" maxlength="80"></label>`,
+    cost: () => `${projectField(LISTS.cost)}${typeField}<label class="wide">Paid to<input name="vendor" maxlength="120" data-need="paid to"></label>${amountField('Total amount')}<label>Paid now (optional)<input type="number" name="paidNow" min="0" step="0.01" inputmode="decimal"></label>${dateField}${methodChoice}`,
+    pay: () => `${projectField(LISTS.pay, (p) => `${wholeMoney(p.vendorDue)} left`)}<label class="wide">Cost<select name="vendorBillId" data-need="cost" disabled><option value="">Select project first</option></select></label>${amountField('Amount', true)}${dateField}${methodChoice}`,
+    expense: () => `<label class="wide">Category<select name="category" data-need="category"><option value="">Select category...</option>${EXPENSE_CATEGORIES.map((c) => `<option>${c}</option>`).join('')}<option value="${OTHER_CATEGORY}">Other (type your own)</option></select></label>
+      <label class="wide" id="quickOther" hidden>Your category<input name="otherCategory" maxlength="60" disabled data-need="your category"></label>
+      <label class="wide">Details<input name="description" maxlength="200"></label>${amountField('Amount')}${dateField}${methodChoice}`,
+    investment: () => `<label>Who paid<select name="person">${people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>${amountField('Amount')}<label class="wide">Paid for<input name="paidFor" maxlength="200" data-need="paid for"></label>${dateField}${methodChoice}`,
+  };
+
+  const drawForm = async (kind) => {
+    if (LISTS[kind] && !LISTS[kind].length) {
+      form.innerHTML = `<p class="muted quick-empty">${EMPTY[kind]}</p>`;
+      return;
+    }
+    form.innerHTML = `<div class="quick-fields">${FIELDS[kind]()}</div>
+      <p class="dialog-error" id="quickError" role="alert"></p>
+      <p class="muted quick-need" id="quickNeed"></p>
+      <div class="dialog-actions quick-foot"><button type="button" class="btn" id="quickCancel">Cancel</button><button class="btn main quick-save" disabled>${QUICK_SAVE[kind]}</button></div>`;
+    form.querySelector('#quickCancel').onclick = close;
+    const save = form.querySelector('.quick-save');
+    const need = form.querySelector('#quickNeed');
+    const amount = form.elements.amount;
+    const full = form.querySelector('#quickFull');
+    const check = () => {
+      const missing = [...form.querySelectorAll('[data-need]')].filter((item) => !item.disabled && !item.value.trim()).map((item) => item.dataset.need);
+      save.disabled = missing.length > 0;
+      need.textContent = missing.length ? `Still needed: ${missing.join(', ')}` : '';
+    };
+    const setFull = (value) => {
+      if (!full) return;
+      full.hidden = !value;
+      full.dataset.value = value || '';
+      amount.max = value || '';
+    };
+    form.oninput = check;
+    form.onchange = check;
+    if (full) {
+      full.onclick = (event) => {
+        event.preventDefault();
+        amount.value = full.dataset.value;
+        check();
+      };
+    }
+    const project = form.elements.project;
+    if (project && chosenProject) {
+      project.value = chosenProject.id;
+      project.closest('label').hidden = true;
+    }
+    if (kind === 'payment') {
+      const showBalance = () => setFull(projects.find((p) => String(p.id) === project.value)?.balance);
+      project.addEventListener('change', showBalance);
+      showBalance();
+    }
+    if (kind === 'pay') {
+      const cost = form.elements.vendorBillId;
+      let unpaid = [];
+      cost.addEventListener('change', () => setFull(unpaid.find((x) => String(x.id) === cost.value)?.due));
+      const loadCosts = async () => {
+        const chosen = project.value;
+        unpaid = chosen ? (await api(`/api/projects/${chosen}`)).vendorBills.filter((x) => x.due > 0) : [];
+        if (chosen !== project.value) return;
+        cost.disabled = !chosen;
+        cost.innerHTML = chosen
+          ? `${unpaid.length === 1 ? '' : '<option value="">Select cost...</option>'}${unpaid.map((x) => `<option value="${x.id}">${esc(x.category)}: ${esc(x.vendor)} (${wholeMoney(x.due)} left)</option>`).join('')}`
+          : '<option value="">Select project first</option>';
+        setFull(unpaid.length === 1 ? unpaid[0].due : null);
+        check();
+      };
+      project.addEventListener('change', loadCosts);
+      if (chosenProject) await loadCosts();
+      if (costId) {
+        cost.value = costId;
+        setFull(unpaid.find((x) => String(x.id) === String(costId))?.due);
+      }
+    }
+    if (kind === 'expense') {
+      const other = form.querySelector('#quickOther');
+      form.elements.category.addEventListener('change', (event) => {
+        const typing = event.target.value === OTHER_CATEGORY;
+        other.hidden = !typing;
+        form.elements.otherCategory.disabled = !typing;
+      });
+    }
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (save.disabled) return;
+      const body = Object.fromEntries(new FormData(form));
+      if (body.category === OTHER_CATEGORY) body.category = body.otherCategory;
+      const urls = {
+        payment: `/api/projects/${body.project}/payments`,
+        cost: `/api/projects/${body.project}/vendor-bills`,
+        pay: `/api/projects/${body.project}/vendor-payments`,
+        expense: '/api/expenses',
+        investment: '/api/investments',
+      };
+      save.disabled = true;
+      try {
+        await api(urls[kind], 'POST', body);
+        close();
+        showToast('Saved');
+        // A half-typed bill stays as it is. Every other page shows the new entry straight away.
+        if (!location.hash.startsWith('#/bill/')) route();
+      } catch (error) {
+        form.querySelector('#quickError').textContent = error.message;
+        save.disabled = false;
+      }
+    };
+    check();
+  };
+  if (!fixed) {
+    wireChips('quickType', (kind) => {
+      if (kind === 'bill') {
+        close();
+        location.hash = '#/bill/new';
+        return;
+      }
+      drawForm(kind);
+    });
+  }
+  await drawForm(firstKind);
+  const first = fixed && [...form.querySelectorAll('input:not([type=radio]):not([type=date]), select')].find((item) => item.offsetParent && !item.value);
+  (first || overlay.querySelector('.quick-close')).focus();
 }
 
 async function route() {
