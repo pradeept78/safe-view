@@ -27,14 +27,16 @@ class Problem extends Error {
 
 function rateLimiter(limit, windowMs) {
   const hits = new Map();
-  return (req, res, next) => {
+  const limiter = (req, res, next) => {
     const time = Date.now();
     const recent = (hits.get(req.ip) || []).filter((at) => time - at < windowMs);
-    if (recent.length >= limit) return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+    if (recent.length >= limit) return res.status(429).json({ error: 'Too many attempts. Please wait 15 minutes, or ask your admin to reset your password.' });
     recent.push(time);
     hits.set(req.ip, recent);
     next();
   };
+  limiter.clear = (ip) => hits.delete(ip);
+  return limiter;
 }
 
 function readCookie(req) {
@@ -219,9 +221,11 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   });
 
   // ----- Sign in -----
-  app.post('/api/login', rateLimiter(limits.login, 15 * 60 * 1000), (req, res) => {
+  const loginLimit = rateLimiter(limits.login, 15 * 60 * 1000);
+  app.post('/api/login', loginLimit, (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(text(req.body.username, 60).toLowerCase());
     if (!user || !user.active || !checkPassword(String(req.body.password ?? ''), user)) throw new Problem(401, 'Wrong username or password');
+    loginLimit.clear(req.ip); // only wrong passwords should count toward the limit
     const token = crypto.randomBytes(32).toString('hex');
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), user.id, Date.now() + SESSION_MS);
