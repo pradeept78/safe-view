@@ -60,6 +60,20 @@ function registerOverview(app, { db, requireLogin }) {
       return { month, sales: monthSales, confirmedProfit: monthProfit, expenses: monthExpenses, net: round2(monthProfit - monthExpenses) };
     });
 
+    // Where the sales money went. Small cost types share one slice so the bar stays readable.
+    const costRows = db.prepare(`
+      SELECT c.category, SUM(c.amount) AS amount FROM vendor_bills c JOIN bills b ON b.id = c.bill_id
+      WHERE b.status = 'approved' AND b.quote_status = 'won' AND b.superseded_by IS NULL
+      GROUP BY c.category
+    `).all();
+    const costOfType = (...types) => round2(costRows.filter((row) => types.includes(row.category)).reduce((amount, row) => amount + row.amount, 0));
+    const costs = [
+      { type: 'Glass', amount: costOfType('Glass') },
+      { type: 'Installation', amount: costOfType('Installation') },
+      { type: 'Transport', amount: costOfType('Transport') },
+      { type: 'Other costs', amount: costOfType('Hardware', 'Other') },
+    ].filter((cost) => cost.amount > 0);
+
     const quotes = db.prepare(`
       SELECT quote_status AS status, COUNT(*) AS n FROM bills
       WHERE status = 'approved' AND superseded_by IS NULL GROUP BY quote_status
@@ -87,6 +101,7 @@ function registerOverview(app, { db, requireLogin }) {
       lost: count('lost'),
       waiting: count('waiting'),
       months,
+      split: { costs, expenses, left: round2(sales - sum(orders, 'cost') - expenses) },
     });
   });
 }

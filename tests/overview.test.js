@@ -118,3 +118,28 @@ test('a revised bill counts once, at its new value', async () => {
 test('the overview needs a login', async () => {
   assert.equal((await call(null, 'GET', '/api/overview')).status, 401);
 });
+
+test('the sales split shows costs by type, shop expenses and what is left', async () => {
+  const admin = await login('admin');
+  const before = (await call(admin, 'GET', '/api/overview')).body;
+  const month = thisMonth();
+  const id = await bill(admin, 10000, 'won');
+  const cost = (category, amount) => call(admin, 'POST', `/api/projects/${id}/vendor-bills`, { date: `${month}-03`, category, vendor: 'V', amount });
+  await cost('Installation', 700);
+  await cost('Hardware', 200);
+  await cost('Other', 100);
+  await call(admin, 'POST', '/api/expenses', { date: `${month}-04`, category: 'Rent', amount: 500, method: 'cash' });
+  const { split } = (await call(admin, 'GET', '/api/overview')).body;
+  const amount = (list, type) => list.find((entry) => entry.type === type)?.amount || 0;
+  assert.equal(amount(split.costs, 'Installation') - amount(before.split.costs, 'Installation'), 700);
+  assert.equal(amount(split.costs, 'Other costs') - amount(before.split.costs, 'Other costs'), 300);
+  assert.equal(split.expenses - before.split.expenses, 500);
+  assert.equal(split.left - before.split.left, 8500);
+});
+
+test('the sales split can go below zero when spending is more than sales', async () => {
+  const admin = await login('admin');
+  const { body } = await call(admin, 'GET', '/api/overview');
+  await call(admin, 'POST', '/api/expenses', { date: `${thisMonth()}-05`, category: 'Rent', amount: body.split.left + 100, method: 'cash' });
+  assert.equal((await call(admin, 'GET', '/api/overview')).body.split.left, -100);
+});

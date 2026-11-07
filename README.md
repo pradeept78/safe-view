@@ -91,6 +91,8 @@ Confirmed profit comes from completed projects. Expected profit comes from proje
 - Pay a cost in parts. Each payment reduces that cost's balance, and paying more than the balance is refused.
 - Profit is the order value before GST, minus project costs. It is expected until completed, then confirmed.
 - Shop expenses are not taken off a project. Overview shows confirmed profit after shop expenses.
+- Quick add, in the sidebar or top bar, records payments, costs, expenses and investment from any page.
+- Add buttons on each page open the same popup, already set to that project or cost.
 - Monthly Accounts shows cash and online money in, vendor payments and shop expenses for a month.
 - Investment shows who put in how much, and what it paid for.
 - Partners can add entries. Only the admin can delete them.
