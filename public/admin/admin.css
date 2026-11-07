@@ -622,5 +622,22 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 
 /* Settings and My Account */
 .field-hint{display:block;margin-top:4px;color:var(--muted);font-size:12px;font-weight:500}
-.stack .chips{margin-bottom:0}
 #form .grid{align-items:start}
+
+.profile-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px 14px}
+.profile-card .avatar{width:52px;height:52px;font-size:20px}
+.profile-who p{margin:2px 0 0;font-size:13.5px;overflow-wrap:anywhere}
+.profile-who b{color:var(--ink)}
+.profile-card{max-width:560px}
+.profile-name{display:flex;align-items:center;gap:2px;min-width:0}
+.profile-name h2{min-width:0;margin:0;overflow-wrap:anywhere}
+.icon-btn{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;border:0;border-radius:9px;background:none;color:var(--muted);cursor:pointer}
+.icon-btn:hover{background:var(--hover);color:var(--ink)}
+.icon-btn:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.profile-foot{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin-top:10px;padding-top:14px;border-top:1px solid var(--line)}
+.profile-foot p{margin:0;font-size:13px}
+.profile-foot a{color:var(--blue-fg)}
+.popup-fields{display:grid;gap:12px}
+.quick .popup-note{margin:10px 0 0;font-size:13px}
+@media (max-width:860px){.icon-btn{width:44px;height:44px}}
