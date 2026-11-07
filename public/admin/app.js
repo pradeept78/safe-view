@@ -212,9 +212,27 @@ function renderLogin() {
   };
 }
 
+// A row of tap filters. The caller decides what a tap does.
+const chips = (id, label, options, chosen) => `<div class="chips" id="${id}" role="group" aria-label="${label}">
+  ${options.map(([value, text]) => `<button type="button" data-value="${value}" aria-pressed="${value === chosen}">${text}</button>`).join('')}
+</div>`;
+
+function wireChips(id, onPick) {
+  const box = document.getElementById(id);
+  const buttons = [...box.querySelectorAll('button')];
+  const chosen = buttons.find((button) => button.getAttribute('aria-pressed') === 'true');
+  if (chosen) box.scrollLeft = chosen.offsetLeft - box.offsetLeft - 8;
+  buttons.forEach((button) => {
+    button.onclick = () => {
+      buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+      onPick(button.dataset.value);
+    };
+  });
+}
+
 // ----- Bills list -----
 const billList = { q: '', status: 'all', items: [], total: 0 };
-const BILL_FILTER_LABELS = [['all', 'All bills'], ['draft', 'Drafts'], ['pending', 'Waiting for admin'], ['waiting', 'Waiting for customer'], ['won', 'Won'], ['lost', 'Lost'], ['revised', 'Revised (old versions)']];
+const BILL_FILTER_LABELS = [['all', 'All bills'], ['draft', 'Drafts'], ['pending', 'Waiting for admin'], ['waiting', 'Waiting for customer'], ['won', 'Won'], ['lost', 'Lost'], ['revised', 'Old versions']];
 
 function drawBillResults() {
   const box = document.getElementById('billResults');
@@ -264,8 +282,8 @@ async function billsPage() {
     ${me.role === 'admin' && stats.waiting ? `<div class="alert warn">${stats.waiting} bill${stats.waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
     <div class="finder">
       <label>Search<input id="billSearch" type="search" placeholder="Customer, phone, bill or invoice number" value="${esc(billList.q)}"></label>
-      <label>Show<select id="billStatus">${BILL_FILTER_LABELS.map(([value, label]) => `<option value="${value}" ${billList.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
     </div>
+    ${chips('billStatus', 'Show bills', BILL_FILTER_LABELS, billList.status)}
     <div class="card scroll" id="billResults"></div>`);
   drawBillResults();
   let timer;
@@ -273,10 +291,41 @@ async function billsPage() {
     clearTimeout(timer);
     timer = setTimeout(() => { billList.q = event.target.value.trim(); loadBills(); }, 250);
   };
-  document.getElementById('billStatus').onchange = (event) => { billList.status = event.target.value; loadBills(); };
+  wireChips('billStatus', (status) => { billList.status = status; loadBills(); });
 }
 
 // ----- Bill editor -----
+function wireCustomerPicker() {
+  const box = document.getElementById('customerMatches');
+  const fill = { customerName: 'name', customerPhone: 'phone', customerAddress: 'address', customerGstin: 'gstin', customerStateCode: 'stateCode' };
+  let timer;
+  let latest = 0;
+  const hide = () => { latest += 1; box.hidden = true; box.innerHTML = ''; };
+  const search = async (query) => {
+    latest += 1;
+    const ticket = latest;
+    const matches = query.length < 2 ? [] : await api(`/api/customers?q=${encodeURIComponent(query)}`).catch(() => []);
+    if (ticket !== latest) return;
+    box.hidden = !matches.length;
+    box.innerHTML = matches.length ? `<small>Past customers</small>${matches.map((customer, index) => `
+      <button type="button" data-index="${index}"><b>${esc(customer.name)}</b><span>${esc([customer.phone, customer.address].filter(Boolean).join(' · '))}</span></button>`).join('')}` : '';
+    box.querySelectorAll('button').forEach((button) => {
+      button.onclick = () => {
+        const customer = matches[button.dataset.index];
+        Object.entries(fill).forEach(([id, key]) => { document.getElementById(id).value = customer[key]; });
+        if (customer.address || customer.gstin || customer.stateCode) document.getElementById('customerMore').open = true;
+        hide();
+      };
+    });
+  };
+  ['customerName', 'customerPhone'].forEach((id) => {
+    document.getElementById(id).oninput = (event) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => search(event.target.value.trim()), 200);
+    };
+  });
+}
+
 async function billPage(id) {
   const [settings, glass, bill] = await Promise.all([
     api('/api/settings'),
@@ -297,6 +346,7 @@ async function billPage(id) {
   const off = editable ? '' : 'disabled';
   const v = (key) => esc(bill ? bill[key] : '');
   const missing = ['gstin', 'address', 'bank_account'].filter((key) => !settings[key]);
+  const showMore = !editable || window.innerWidth > 640 || ['customerAddress', 'customerGstin', 'customerStateCode', 'projectRemark'].some((key) => bill?.[key]);
 
   shell('bills', `
     <div class="head">
@@ -314,11 +364,17 @@ async function billPage(id) {
       <div class="grid">
         <label>Customer name<input id="customerName" value="${v('customerName')}" ${off}></label>
         <label>Phone<input id="customerPhone" value="${v('customerPhone')}" inputmode="tel" ${off}></label>
-        <label class="wide">Address<input id="customerAddress" value="${v('customerAddress')}" ${off}></label>
-        <label>GST number<input id="customerGstin" value="${v('customerGstin')}" ${off}></label>
-        <label>State code<input id="customerStateCode" value="${v('customerStateCode')}" ${off}></label>
-        <label class="wide">Project remark<input id="projectRemark" value="${v('projectRemark')}" ${off}></label>
+        <div class="wide matches" id="customerMatches" hidden></div>
       </div>
+      <details class="more-fields" id="customerMore" ${showMore ? 'open' : ''}>
+        <summary>Address, GST and remark</summary>
+        <div class="grid">
+          <label class="wide">Address<input id="customerAddress" value="${v('customerAddress')}" ${off}></label>
+          <label>GST number<input id="customerGstin" value="${v('customerGstin')}" ${off}></label>
+          <label>State code<input id="customerStateCode" value="${v('customerStateCode')}" ${off}></label>
+          <label class="wide">Project remark<input id="projectRemark" value="${v('projectRemark')}" ${off}></label>
+        </div>
+      </details>
     </div>
     <div class="card">
       <h2>Glass</h2>
@@ -339,6 +395,7 @@ async function billPage(id) {
     ${bill?.history?.length > 1 ? `<div class="card"><h2>Version history (${bill.history.length})</h2><div class="versions">${bill.history.map((v, index) => `<a href="#/bill/${v.id}" class="${v.id === bill.id ? 'on' : ''}">Version ${index + 1}: ${esc(v.number)}</a>`).join('')}</div></div>` : ''}
     ${bill ? `<p class="muted">Prepared by ${esc(bill.preparedBy)}${bill.checkedBy ? ` · Checked by ${esc(bill.checkedBy)}` : ''}</p>` : ''}
     <div class="savebar"><div class="savetotal" id="saveTotal"></div><div class="acts" id="acts"></div></div>`);
+  if (editable) wireCustomerPicker();
 
   function blankLine(type) {
     return {
@@ -1075,7 +1132,19 @@ async function overviewPage() {
 
 // ----- Quotation report -----
 const monthStart = () => `${today().slice(0, 7)}-01`;
-const report = { from: null, to: null, status: 'all' };
+const report = { from: null, to: null, status: 'all', range: 'month' };
+const REPORT_RANGES = [['month', 'This month'], ['last', 'Last month'], ['three', 'Last 3 months'], ['year', 'This financial year'], ['custom', 'Pick dates']];
+
+function datesFor(range) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = (y, m, d) => new Date(y, m, d).toLocaleDateString('en-CA');
+  if (range === 'last') return { from: day(year, month - 1, 1), to: day(year, month, 0) };
+  if (range === 'three') return { from: day(year, month - 2, 1), to: today() };
+  if (range === 'year') return { from: day(month >= 3 ? year : year - 1, 3, 1), to: today() };
+  return { from: monthStart(), to: today() };
+}
 
 async function quotationsPage() {
   report.from = report.from || monthStart();
@@ -1096,12 +1165,13 @@ async function quotationsPage() {
   shell('quotations', `
     <div class="head">
       <h1>Quotations</h1>
-      <form class="range" id="range">
-        <label>From<input type="date" name="from" value="${esc(report.from)}" required></label>
-        <label>To<input type="date" name="to" value="${esc(report.to)}" required></label>
-        <button class="btn">Show</button>
-      </form>
     </div>
+    ${chips('reportRange', 'Date range', REPORT_RANGES, report.range)}
+    ${report.range === 'custom' ? `<form class="range" id="range">
+      <label>From<input type="date" name="from" value="${esc(report.from)}" required></label>
+      <label>To<input type="date" name="to" value="${esc(report.to)}" required></label>
+      <button class="btn">Show</button>
+    </form>` : ''}
     <div id="msg"></div>
     <div class="stats">
       ${stat('Win rate', q.winRate === null ? 'No results yet' : `${q.winRate}%`, true)}
@@ -1141,11 +1211,19 @@ async function quotationsPage() {
       </div>
       ${shown.length ? `<div class="scroll"><table class="compact"><tr><th>Bill</th><th>Customer</th><th>Sent</th><th>Status</th><th>Reason</th><th class="n">Value</th></tr>${rows}</table></div>` : '<p class="muted">No quotations to show. Approved bills appear here.</p>'}
     </div>`);
-  document.getElementById('range').onsubmit = (event) => {
-    event.preventDefault();
-    Object.assign(report, Object.fromEntries(new FormData(event.target)));
+  wireChips('reportRange', (range) => {
+    report.range = range;
+    if (range !== 'custom') Object.assign(report, datesFor(range));
     quotationsPage();
-  };
+  });
+  const customRange = document.getElementById('range');
+  if (customRange) {
+    customRange.onsubmit = (event) => {
+      event.preventDefault();
+      Object.assign(report, Object.fromEntries(new FormData(event.target)));
+      quotationsPage();
+    };
+  }
   document.getElementById('status').onchange = (event) => { report.status = event.target.value; quotationsPage(); };
   root.querySelectorAll('tr.link').forEach((row) => {
     row.onclick = (event) => { if (!event.target.closest('a')) location.hash = `#/bill/${row.dataset.id}`; };
@@ -1157,7 +1235,10 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const addOpen = () => (window.innerWidth > 640 ? 'open' : '');
 const shortDate = (date) => (date ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '–');
 const methodBadge = (method) => `<span class="badge ${method === 'cash' ? 'cash' : 'online'}">${method === 'cash' ? 'Cash' : 'Online'}</span>`;
-const methodSelect = '<label>Paid by<select name="method"><option value="cash">Cash</option><option value="online">Online</option></select></label>';
+const methodChoice = `<fieldset class="choices pair"><legend>Paid by</legend><div class="pair-row">
+  <label><input type="radio" name="method" value="cash" checked><span>Cash</span></label>
+  <label><input type="radio" name="method" value="online"><span>Online</span></label>
+</div></fieldset>`;
 const removeButton = (kind, id) => (me.role === 'admin' ? `<button class="btn small danger" data-delete="${kind}" data-id="${id}" aria-label="Delete entry">×</button>` : '');
 const stat = (label, value, hot) => `<div class="stat ${hot ? 'hot' : ''}"><small>${esc(label)}</small><b>${esc(value)}</b></div>`;
 
@@ -1196,11 +1277,22 @@ function wireMoneyPage(redraw) {
 const projectBadge = (status) => `<span class="badge ${status === 'completed' ? 'q-won' : 'q-waiting'}">${status === 'completed' ? 'Completed' : 'In progress'}</span>`;
 const profitLabel = (status) => (status === 'completed' ? 'Confirmed profit' : 'Expected profit');
 
+const PROJECT_FILTERS = [['all', 'All'], ['running', 'In progress'], ['collect', 'Money to collect'], ['pay', 'Costs to pay'], ['completed', 'Completed']];
+const PROJECT_TESTS = {
+  all: () => true,
+  running: (project) => project.status !== 'completed',
+  collect: (project) => project.balance > 0,
+  pay: (project) => project.vendorDue > 0,
+  completed: (project) => project.status === 'completed',
+};
+const projectList = { filter: 'all' };
+
 async function projectsPage() {
   const projects = await api('/api/projects');
+  const shown = projects.filter(PROJECT_TESTS[projectList.filter]);
   const total = (key, list = projects) => list.reduce((sum, project) => sum + project[key], 0);
   const finished = projects.filter((project) => project.status === 'completed');
-  const rows = projects.map((p) => `
+  const rows = shown.map((p) => `
     <tr class="link" data-id="${p.id}">
       <td>${esc(p.number)}</td><td>${esc(p.customerName)}</td><td>${projectBadge(p.status)}</td><td>${shortDate(p.acceptedOn)}</td>
       <td class="n">${money(p.grandTotal)}</td><td class="n">${money(p.received)}</td><td class="n">${money(p.balance)}</td>
@@ -1214,10 +1306,12 @@ async function projectsPage() {
       ${stat('Confirmed profit', money(total('profit', finished)))}
       ${stat('In progress', String(projects.length - finished.length))}
     </div>
+    ${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
     <div class="card scroll">
-      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Costs</th><th class="n">Profit</th></tr>${rows}</table>`
-    : '<p class="muted">Quotations appear here as projects once they are marked as won.</p>'}
+      ${shown.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Costs</th><th class="n">Profit</th></tr>${rows}</table>`
+    : `<p class="muted">${projects.length ? 'No projects match this filter.' : 'Quotations appear here as projects once they are marked as won.'}</p>`}
     </div>`);
+  wireChips('projectFilter', (filter) => { projectList.filter = filter; projectsPage(); });
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
 }
 
@@ -1300,7 +1394,7 @@ async function projectPage(id) {
       ${p.balance > 0 ? `<details class="adder" ${addOpen()}><summary>+ Add Payment</summary><form class="entry" data-post="/api/projects/${p.id}/payments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label><span class="label-row">Amount<button type="button" class="link" id="fullBalance" data-balance="${p.balance}">Full balance</button></span><input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
-        ${methodSelect}
+        ${methodChoice}
         <label>UPI or bank reference<input name="reference" maxlength="80"></label>
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Add Payment</button>
@@ -1320,14 +1414,14 @@ async function projectPage(id) {
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Total amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
         <label>Paid now (optional)<input type="number" name="paidNow" min="0" step="0.01" inputmode="decimal"></label>
-        ${methodSelect}
+        ${methodChoice}
         <button class="btn main">Add Cost</button>
       </form></details>`}
       ${unpaid.length ? `<details class="adder" id="payAdder"><summary>+ Pay a Cost</summary><form class="entry" id="payCost" data-post="/api/projects/${p.id}/vendor-payments">
         <label>Cost<select name="vendorBillId" required>${unpaid.map((x) => `<option value="${x.id}" data-due="${x.due}">${esc(x.category)}: ${esc(x.vendor)} (${money(x.due)} left)</option>`).join('')}</select></label>
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label><span class="label-row">Amount<button type="button" class="link" id="fullCost">Full balance</button></span><input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodSelect}
+        ${methodChoice}
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Save Payment</button>
       </form></details>` : ''}
@@ -1476,7 +1570,7 @@ async function accountsPage() {
         <label id="categoryOther" hidden>Your category<input id="categoryText" maxlength="60"></label>
         <label>Details<input name="description" maxlength="200"></label>
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodSelect}
+        ${methodChoice}
         <button class="btn main">Add Expense</button>
       </form></details>
     </div>`);
@@ -1526,7 +1620,7 @@ async function investmentPage() {
         <label>Who paid<select name="person" required>${data.people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>
         <label>Paid for<input name="paidFor" maxlength="200" placeholder="Like: cutting machine" required></label>
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodSelect}
+        ${methodChoice}
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Add Investment</button>
       </form></details>

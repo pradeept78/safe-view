@@ -247,7 +247,7 @@ td.loss{color:var(--red);font-weight:700}
   .scroll table.compact td[data-label="Reason"]{grid-column:1/-1;font-size:13px;color:#8c1d18}
   .scroll table.compact td[data-label="Reason"]:empty{display:none}
   .scroll table.compact td[data-label="Reason"] .muted{text-align:left}
-  .scroll table.compact td[data-label="Prepared by"],.scroll table.compact td[data-label="Sent"],.scroll table.compact td[data-label="Order accepted"],.scroll table.compact td[data-label="Bill total"],.scroll table.compact td[data-label="Received"],.scroll table.compact td[data-label="Vendors"]{display:none}
+  .scroll table.compact td[data-label="Prepared by"],.scroll table.compact td[data-label="Sent"],.scroll table.compact td[data-label="Order accepted"],.scroll table.compact td[data-label="Bill total"],.scroll table.compact td[data-label="Received"],.scroll table.compact td[data-label="Costs"]{display:none}
 }
 
 /* Pop-ups */
@@ -280,7 +280,7 @@ td.loss{color:var(--red);font-weight:700}
 
 .badge.q-revised{background:#e9ecf1;color:#566274;text-transform:none}
 .alert a{font-weight:700}
-.finder{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:12px;margin-bottom:14px}
+.finder{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-bottom:10px}
 .list-count{margin:12px 0 0;text-align:center}
 .load-more{display:flex;width:100%;margin-top:10px}
 .versions{display:flex;flex-wrap:wrap;gap:8px}
@@ -404,10 +404,10 @@ input[type=checkbox],.lines input[type=checkbox]{width:20px;height:20px;min-widt
 .bar-col:hover .bar-area,.bar-col:focus .bar-area{background:#f1f3f7}
 .bar-col:focus{outline:2px solid var(--gold);outline-offset:1px}
 .bar-area{position:relative;display:block;height:190px;border-radius:4px;border-bottom:1px solid transparent}
-.bar{position:absolute;left:18%;right:18%;border-radius:4px 4px 0 0}
+.bar-area .bar{position:absolute;left:18%;right:18%;border-radius:4px 4px 0 0}
 .bar.sales{background:#1d4f86}
 .bar.profit{background:#1f7a4d}
-.bar.negative{background:#b3261e;border-radius:0 0 4px 4px}
+.bar-area .bar.negative{background:#b3261e;border-radius:0 0 4px 4px}
 .bar-tip{display:none;position:absolute;bottom:calc(100% - 28px);left:50%;transform:translateX(-50%);z-index:3;padding:6px 9px;border-radius:7px;background:#141c28;color:#fff;font:600 11.5px var(--sans);white-space:nowrap;box-shadow:0 6px 16px rgba(0,0,0,.2)}
 .bar-tip b{display:block;font-size:13px}
 .bar-col:nth-child(-n+2) .bar-tip{left:0;transform:none}
@@ -428,7 +428,7 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
   .grid3-cards{grid-template-columns:minmax(0,1fr)}
   .bar-area{height:150px}
   .bar-col{font-size:9.5px}
-  .bar{left:12%;right:12%}
+  .bar-area .bar{left:12%;right:12%}
   .material-name{min-width:0}
   tr.add-heading{border:0;background:none;margin:12px 0 -4px;padding:0}
   tr.add-heading td{padding:0}
@@ -437,7 +437,7 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 /* Overview refinements */
 .lines .material-name{min-width:330px}
 .bar.sales,.bar.profit{background:#2f6fb0}
-.bar.negative{background:#c9503f}
+.bar-area .bar.negative{background:#c9503f}
 .zero-line{position:absolute;left:0;right:0;height:1px;background:#c9d0da}
 .totals div>span:last-child{white-space:nowrap}
 .totals div>span:first-child{min-width:0}
@@ -467,7 +467,6 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 .dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px;align-items:end}
 .dates .order{margin:0}
 .dates .order p{align-self:center}
-.scroll table.compact td[data-label="Vendors"]{display:none}
 @media (max-width:760px){.dates{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){
   .scroll table.compact td[data-label="Profit"]{grid-area:3/1/4/3}
@@ -506,3 +505,33 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 .choices label:hover span{background:#f1f3f7}
 .choices input:checked+span{border-color:var(--side);background:var(--side);color:#fff}
 .choices input:focus-visible+span{outline:2px solid var(--gold);outline-offset:1px}
+
+/* Tap filters */
+.chips{display:flex;gap:6px;margin-bottom:14px;padding:2px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;min-height:40px;padding:0 14px;border:1px solid #cfd6df;border-radius:999px;background:#fff;color:var(--ink);font:600 13.5px var(--sans);cursor:pointer}
+.chips button:hover{background:#f1f3f7}
+.chips button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.chips button[aria-pressed=true]{border-color:var(--side);background:var(--side);color:#fff}
+.range{margin-bottom:14px}
+@media (max-width:860px){.chips button{min-height:44px}}
+
+/* Cash or Online */
+.choices label{position:relative}
+.choices.pair{grid-column:auto}
+.pair-row{display:flex;gap:4px}
+.choices.pair .pair-row label{flex:1 1 0;min-width:0;margin:0}
+.choices.pair span{justify-content:center;min-height:42px;padding:0 6px}
+
+/* Past customers on a new bill */
+.matches{display:grid;gap:4px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#f8f9fb}
+.matches small{padding:2px 4px;color:var(--muted);font-weight:600}
+.matches button{display:grid;gap:2px;min-height:44px;padding:8px 10px;border:0;border-radius:8px;background:#fff;color:var(--ink);font:500 14px var(--sans);text-align:left;cursor:pointer}
+.matches button:hover,.matches button:focus-visible{outline:2px solid var(--gold);outline-offset:-1px}
+.matches button span{color:var(--muted);font-size:12.5px;overflow-wrap:anywhere}
+.more-fields{margin-top:12px}
+.more-fields summary{display:flex;align-items:center;min-height:44px;color:var(--ink);font-size:14px;font-weight:700;cursor:pointer}
+.more-fields summary::before{content:'+';width:18px;color:var(--muted)}
+.more-fields[open] summary::before{content:'–'}
+.more-fields .grid{margin-top:6px}
+@media (max-width:860px){.choices.pair span{min-height:44px}}

@@ -317,6 +317,26 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
     };
   }
 
+  // Past customers come from earlier bills, so a repeat customer takes one tap on a new bill.
+  app.get('/api/customers', requireLogin, (req, res) => {
+    const search = text(req.query.q, 80);
+    if (search.length < 2) return res.json([]);
+    const like = (value) => `%${value.replace(/[\\%_]/g, '\\$&')}%`;
+    const rows = db.prepare(`
+      SELECT customer_name, customer_phone, customer_address, customer_gstin, customer_state_code, MAX(id) AS latest
+      FROM bills
+      WHERE customer_name <> '' AND (customer_name LIKE ? ESCAPE '\\' OR replace(customer_phone, ' ', '') LIKE ? ESCAPE '\\')
+      GROUP BY lower(trim(customer_name)), replace(customer_phone, ' ', '')
+      ORDER BY latest DESC LIMIT 8`).all(like(search), like(search.replace(/\s/g, '')));
+    res.json(rows.map((row) => ({
+      name: row.customer_name,
+      phone: row.customer_phone,
+      address: row.customer_address,
+      gstin: row.customer_gstin,
+      stateCode: row.customer_state_code,
+    })));
+  });
+
   app.get('/api/bills', requireLogin, (req, res) => {
     const status = String(req.query.status || 'all');
     if (!BILL_FILTERS[status]) throw new Problem(400, 'Unknown status');

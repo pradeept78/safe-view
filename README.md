@@ -87,6 +87,7 @@ Confirmed profit comes from completed projects. Expected profit comes from proje
 - The Quotations page shows how many were sent, won and lost, the win rate, why orders were lost, and follow-ups.
 - Add each cost with its type (glass, installation, transport, hardware or other) and total amount, then mark the project as completed. Costs count even before they are paid.
 - A project page has three tabs: Summary, Customer payments and Costs.
+- The Projects list can be filtered to in progress, money to collect, costs to pay or completed.
 - Pay a cost in parts. Each payment reduces that cost's balance, and paying more than the balance is refused.
 - Profit is the order value before GST, minus project costs. It is expected until completed, then confirmed.
 - Shop expenses are not taken off a project. Overview shows confirmed profit after shop expenses.
