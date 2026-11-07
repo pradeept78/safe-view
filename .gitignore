@@ -1,0 +1,20 @@
+# Secrets - never commit
+.env
+.env.*
+*.pem
+.first-login.txt
+
+# Saved data and backups
+data/
+backups/
+*.db
+*.db-shm
+*.db-wal
+
+# Dependencies
+node_modules/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

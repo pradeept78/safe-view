@@ -1,0 +1,19 @@
+{
+  "name": "safe-view",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Safe View Glass Solutions website and billing dashboard",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "backup": "node scripts/backup.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.22.3"
+  }
+}
