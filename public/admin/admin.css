@@ -386,3 +386,8 @@ select:disabled{background-color:#f3f5f8;cursor:default}
 @media (max-width:1180px){.lines select{padding-right:30px!important;background-position:right 8px center}}
 @media (max-width:640px){.lines input,.lines select{min-height:44px}}
 input[type=checkbox],.lines input[type=checkbox]{width:20px;height:20px;min-width:0;min-height:0;padding:0;margin:0;flex:none;accent-color:var(--green)}
+
+/* Keep content beside the sidebar instead of floating in the middle of wide screens */
+@media (min-width:861px){
+  .wrap{margin:0;max-width:1400px;padding-left:32px;padding-right:32px}
+}
