@@ -1,14 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { openDatabase, hashPassword } = require('../src/db');
+const { openDatabase, hashPassword, linkVendorPayments } = require('../src/db');
 const { createApp } = require('../src/app');
 
 const PASSWORD = 'test-password-1';
 let server;
 let base;
+let db;
 
 test.before(async () => {
-  const db = openDatabase(':memory:');
+  db = openDatabase(':memory:');
   const { hash, salt } = hashPassword(PASSWORD);
   db.prepare('UPDATE users SET pass_hash = ?, salt = ?').run(hash, salt);
   await new Promise((resolve) => { server = createApp(db, { limits: { login: 1000, enquiry: 1000 }, notify: async () => {} }).listen(0, resolve); });
@@ -45,8 +46,8 @@ async function project(admin, rate = 10000) {
   return body.id;
 }
 
-const addBill = (cookie, id, amount) => call(cookie, 'POST', `/api/projects/${id}/vendor-bills`, { date: `${month()}-03`, vendor: 'Supplier', description: 'Glass', amount });
-const addPaid = (cookie, id, amount) => call(cookie, 'POST', `/api/projects/${id}/vendor-payments`, { date: `${month()}-04`, vendor: 'Supplier', amount, method: 'cash' });
+const addBill = (cookie, id, amount, extra = {}) => call(cookie, 'POST', `/api/projects/${id}/vendor-bills`, { date: `${month()}-03`, category: 'Glass', vendor: 'Supplier', description: 'Glass', amount, ...extra });
+const addPaid = (cookie, id, vendorBillId, amount) => call(cookie, 'POST', `/api/projects/${id}/vendor-payments`, { date: `${month()}-04`, vendorBillId, amount, method: 'cash' });
 const finish = (cookie, id, completedOn = `${month()}-05`) => call(cookie, 'PUT', `/api/projects/${id}/status`, { status: 'completed', completedOn });
 
 test('a new project is in progress, with no costs known yet', async () => {
@@ -62,8 +63,9 @@ test('a new project is in progress, with no costs known yet', async () => {
 test('vendor bills count as costs before they are paid', async () => {
   const admin = await login('admin');
   const id = await project(admin);
-  assert.equal((await addBill(admin, id, 6000)).status, 201);
-  await addPaid(admin, id, 2000);
+  const cost = await addBill(admin, id, 6000);
+  assert.equal(cost.status, 201);
+  await addPaid(admin, id, cost.body.id, 2000);
   const { body } = await call(admin, 'GET', `/api/projects/${id}`);
   assert.equal(body.vendorBilled, 6000);
   assert.equal(body.vendorPaid, 2000);
@@ -73,15 +75,86 @@ test('vendor bills count as costs before they are paid', async () => {
   assert.equal(body.vendorBills[0].vendor, 'Supplier');
 });
 
-test('payments without a vendor bill still count, so older projects keep their costs', async () => {
+test('each payment reduces the balance of its own cost', async () => {
   const admin = await login('admin');
   const id = await project(admin);
-  await addPaid(admin, id, 3000);
+  const glass = await addBill(admin, id, 6000);
+  const fitting = await addBill(admin, id, 1500, { category: 'Installation', vendor: 'Fitter' });
+  await addPaid(admin, id, glass.body.id, 2000);
+  await addPaid(admin, id, glass.body.id, 1000);
   const { body } = await call(admin, 'GET', `/api/projects/${id}`);
-  assert.equal(body.vendorBilled, 0);
-  assert.equal(body.vendorCost, 3000);
-  assert.equal(body.vendorDue, 0);
-  assert.equal(body.profit, 7000);
+  const costs = Object.fromEntries(body.vendorBills.map((cost) => [cost.id, cost]));
+  assert.equal(costs[glass.body.id].paid, 3000);
+  assert.equal(costs[glass.body.id].due, 3000);
+  assert.equal(costs[fitting.body.id].due, 1500);
+  assert.equal(body.vendorDue, 4500);
+  assert.equal(body.vendorPayments[0].vendor, 'Supplier');
+});
+
+test('a cost cannot be paid more than its balance, or from another project', async () => {
+  const admin = await login('admin');
+  const id = await project(admin);
+  const other = await project(admin);
+  const cost = await addBill(admin, id, 1000);
+  await addPaid(admin, id, cost.body.id, 700);
+  const over = await addPaid(admin, id, cost.body.id, 301);
+  assert.equal(over.status, 400);
+  assert.match(over.body.error, /300/);
+  assert.equal((await addPaid(admin, id, cost.body.id, 300)).status, 201);
+  assert.equal((await addPaid(admin, other, cost.body.id, 1)).status, 400);
+  assert.equal((await addPaid(admin, id, undefined, 1)).status, 400);
+});
+
+test('installation and transport count as costs and take off profit', async () => {
+  const admin = await login('admin');
+  const id = await project(admin);
+  await addBill(admin, id, 6000);
+  await addBill(admin, id, 1500, { category: 'Installation', vendor: 'Fitter' });
+  await addBill(admin, id, 500, { category: 'Transport', vendor: 'Tempo' });
+  const { body } = await call(admin, 'GET', `/api/projects/${id}`);
+  assert.deepEqual(body.costsByType, [{ type: 'Glass', amount: 6000 }, { type: 'Installation', amount: 1500 }, { type: 'Transport', amount: 500 }]);
+  assert.equal(body.vendorCost, 8000);
+  assert.equal(body.profit, 2000);
+});
+
+test('a cost paid on the spot saves the cost and its payment together', async () => {
+  const admin = await login('admin');
+  const id = await project(admin);
+  assert.equal((await addBill(admin, id, 500, { category: 'Transport', paidNow: 200, method: 'online' })).status, 201);
+  assert.equal((await addBill(admin, id, 500, { paidNow: 501, method: 'cash' })).status, 400);
+  assert.equal((await addBill(admin, id, 500, { paidNow: 100, method: 'cheque' })).status, 400);
+  const { body } = await call(admin, 'GET', `/api/projects/${id}`);
+  assert.equal(body.vendorBills.length, 1);
+  assert.equal(body.vendorBills[0].due, 300);
+  assert.equal(body.vendorPayments[0].method, 'online');
+});
+
+test('a cost with payments cannot be deleted until its payments are', async () => {
+  const admin = await login('admin');
+  const id = await project(admin);
+  const cost = await addBill(admin, id, 1000);
+  const payment = await addPaid(admin, id, cost.body.id, 100);
+  assert.equal((await call(admin, 'DELETE', `/api/vendor-bills/${cost.body.id}`)).status, 409);
+  assert.equal((await call(admin, 'DELETE', `/api/vendor-payments/${payment.body.id}`)).status, 200);
+  assert.equal((await call(admin, 'DELETE', `/api/vendor-bills/${cost.body.id}`)).status, 200);
+});
+
+test('older vendor payments join a matching cost or become a cost of their own', async () => {
+  const admin = await login('admin');
+  const id = await project(admin);
+  const cost = await addBill(admin, id, 6000, { vendor: 'Ramesh Glass' });
+  const old = db.prepare(`INSERT INTO vendor_payments (bill_id, date, vendor, description, amount, method, created_by, created_at)
+    VALUES (?, '2026-10-01', ?, 'Old entry', ?, 'cash', 1, '2026-10-01T00:00:00Z')`);
+  old.run(id, ' ramesh glass', 2000);
+  old.run(id, 'Fitter', 800);
+  linkVendorPayments(db);
+  const { body } = await call(admin, 'GET', `/api/projects/${id}`);
+  assert.equal(body.vendorBills.find((x) => x.id === cost.body.id).due, 4000);
+  const own = body.vendorBills.find((x) => x.vendor === 'Fitter');
+  assert.equal(own.category, 'Other');
+  assert.equal(own.due, 0);
+  assert.equal(body.vendorCost, 6800);
+  assert.equal(body.vendorPaid, 2800);
 });
 
 test('a project can be completed with a date and reopened for a late bill', async () => {
@@ -104,10 +177,11 @@ test('a project can be completed with a date and reopened for a late bill', asyn
 test('a project with money still owed by the customer can be completed', async () => {
   const admin = await login('admin');
   const id = await project(admin);
+  const cost = await addBill(admin, id, 100);
   assert.equal((await finish(admin, id)).status, 200);
   assert.equal((await call(admin, 'GET', `/api/projects/${id}`)).body.balance, 11800);
   assert.equal((await call(admin, 'POST', `/api/projects/${id}/payments`, { date: `${month()}-06`, amount: 100, method: 'cash' })).status, 201);
-  assert.equal((await addPaid(admin, id, 50)).status, 201);
+  assert.equal((await addPaid(admin, id, cost.body.id, 50)).status, 201);
 });
 
 test('the overview separates confirmed profit, expected profit and vendors to pay', async () => {
@@ -153,8 +227,8 @@ test('profit after shop expenses takes expenses off confirmed profit', async () 
 test('a revision keeps the project status, vendor bills and payments', async () => {
   const admin = await login('admin');
   const id = await project(admin);
-  await addBill(admin, id, 2000);
-  await addPaid(admin, id, 500);
+  const cost = await addBill(admin, id, 2000);
+  await addPaid(admin, id, cost.body.id, 500);
   await finish(admin, id);
   const { body: copy } = await call(admin, 'POST', `/api/bills/${id}/revise`);
   await call(admin, 'POST', `/api/bills/${copy.id}/approve`);
@@ -194,7 +268,8 @@ test('bad vendor bills are refused', async () => {
   const admin = await login('admin');
   const id = await project(admin);
   const url = `/api/projects/${id}/vendor-bills`;
-  assert.equal((await call(admin, 'POST', url, { date: '2026-10-01', amount: 10 })).status, 400);
-  assert.equal((await call(admin, 'POST', url, { date: '2026-10-01', vendor: 'V', amount: 0 })).status, 400);
-  assert.equal((await call(admin, 'POST', url, { date: 'soon', vendor: 'V', amount: 10 })).status, 400);
+  assert.equal((await call(admin, 'POST', url, { date: '2026-10-01', category: 'Glass', amount: 10 })).status, 400);
+  assert.equal((await call(admin, 'POST', url, { date: '2026-10-01', category: 'Glass', vendor: 'V', amount: 0 })).status, 400);
+  assert.equal((await call(admin, 'POST', url, { date: 'soon', category: 'Glass', vendor: 'V', amount: 10 })).status, 400);
+  assert.equal((await call(admin, 'POST', url, { date: '2026-10-01', category: 'Snacks', vendor: 'V', amount: 10 })).status, 400);
 });

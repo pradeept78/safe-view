@@ -83,10 +83,12 @@ Confirmed profit comes from completed projects. Expected profit comes from proje
 ## How money tracking works
 
 - An approved bill is a quotation waiting for the customer. Mark it as won with the order date, or lost with a reason.
-- Only won quotations become projects. Add part payments and vendor payments to them.
+- Only won quotations become projects. Add customer part payments and project costs to them.
 - The Quotations page shows how many were sent, won and lost, the win rate, why orders were lost, and follow-ups.
-- Add vendor bills as they arrive, then mark the project as completed. Vendor bills count as costs even before they are paid.
-- Profit is the order value before GST, minus vendor costs. It is expected until completed, then confirmed.
+- Add each cost with its type (glass, installation, transport, hardware or other) and total amount, then mark the project as completed. Costs count even before they are paid.
+- A project page has three tabs: Summary, Customer payments and Costs.
+- Pay a cost in parts. Each payment reduces that cost's balance, and paying more than the balance is refused.
+- Profit is the order value before GST, minus project costs. It is expected until completed, then confirmed.
 - Shop expenses are not taken off a project. Overview shows confirmed profit after shop expenses.
 - Monthly Accounts shows cash and online money in, vendor payments and shop expenses for a month.
 - Investment shows who put in how much, and what it paid for.

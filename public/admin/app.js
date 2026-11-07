@@ -1053,7 +1053,7 @@ async function overviewPage() {
         ${row('Billed with GST', money(o.billed))}
         ${row('Received', money(o.received))}
         ${row('Still to collect', money(o.toCollect), true)}
-        ${row('Vendors still to pay', money(o.vendorDue))}
+        ${row('Costs still to pay', money(o.vendorDue))}
       </div></div>
       <div class="card"><h2>Investment</h2><div class="totals plain">
         ${row('Total invested', money(o.investment))}
@@ -1070,7 +1070,7 @@ async function overviewPage() {
     <details class="card table-view"><summary>See monthly numbers as a table</summary>
       <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Confirmed profit</th><th class="n">Expenses</th><th class="n">After expenses</th></tr>${tableRows}</table></div>
     </details>
-    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as vendor bills arrive. This is a guide for running the shop, not an accounting statement.</p>`);
+    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as project costs arrive. This is a guide for running the shop, not an accounting statement.</p>`);
 }
 
 // ----- Quotation report -----
@@ -1210,24 +1210,39 @@ async function projectsPage() {
     <div class="head"><h1>Projects</h1></div>
     <div class="stats">
       ${stat('Still to collect', money(total('balance')), true)}
-      ${stat('Vendors still to pay', money(total('vendorDue')))}
+      ${stat('Costs still to pay', money(total('vendorDue')))}
       ${stat('Confirmed profit', money(total('profit', finished)))}
       ${stat('In progress', String(projects.length - finished.length))}
     </div>
     <div class="card scroll">
-      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
+      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Costs</th><th class="n">Profit</th></tr>${rows}</table>`
     : '<p class="muted">Quotations appear here as projects once they are marked as won.</p>'}
     </div>`);
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
 }
 
+// Remembers the open tab, so saving a payment does not jump back to Summary.
+const PROJECT_TABS = [['summary', 'Summary'], ['customer', 'Customer payments'], ['costs', 'Costs']];
+const projectView = { id: null, tab: 'summary' };
+
 async function projectPage(id) {
   const p = await api(`/api/projects/${id}`);
+  if (projectView.id !== id) Object.assign(projectView, { id, tab: 'summary' });
+  const panel = (name) => `data-panel="${name}" ${projectView.tab === name ? '' : 'hidden'}`;
   const finished = p.status === 'completed';
   const paymentRows = p.payments.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.reference)}</td><td>${esc(x.note)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('payments', x.id)}</td></tr>`).join('');
-  const vendorBillRows = p.vendorBills.map((x) => `
-    <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-bills', x.id)}</td></tr>`).join('');
+  const unpaid = p.vendorBills.filter((x) => x.due > 0);
+  const costRows = p.vendorBills.map((x) => `
+    <div class="cost">
+      <div class="cost-main"><span class="badge type">${esc(x.category)}</span><b>${esc(x.vendor)}</b>${x.description ? `<span class="muted">${esc(x.description)}</span>` : ''}</div>
+      <div class="cost-sums">
+        <span><small>Total</small>${money(x.amount)}</span>
+        <span><small>Paid</small>${money(x.paid)}</span>
+        <span><small>Balance</small><b>${money(x.due)}</b></span>
+      </div>
+      <div class="cost-actions">${x.due > 0 ? `<button type="button" class="btn small" data-pay="${x.id}">Pay</button>` : '<span class="badge approved">Paid</span>'}${x.paid === 0 ? removeButton('vendor-bills', x.id) : ''}</div>
+    </div>`).join('');
   const vendorRows = p.vendorPayments.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-payments', x.id)}</td></tr>`).join('');
   shell('projects', `
@@ -1239,10 +1254,14 @@ async function projectPage(id) {
     <div class="stats">
       ${stat('Balance to collect', money(p.balance), true)}
       ${stat('Received', money(p.received))}
-      ${stat('Vendor costs', money(p.vendorCost))}
+      ${stat('Project costs', money(p.vendorCost))}
       ${stat(profitLabel(p.status), money(p.profit))}
     </div>
-    ${finished ? '' : `<p class="alert warn">Profit is an estimate until this project is completed. Add all vendor bills first.</p>`}
+    <nav class="tabs" aria-label="Project sections">
+      ${PROJECT_TABS.map(([name, label]) => `<button type="button" data-tab="${name}" ${projectView.tab === name ? 'aria-current="true"' : ''}>${label}</button>`).join('')}
+    </nav>
+    <section ${panel('summary')}>
+    ${finished ? '' : `<p class="alert warn">Profit is an estimate until this project is completed. Add all costs first.</p>`}
     <div class="card">
       <div class="split">
         <div class="totals plain">
@@ -1253,9 +1272,10 @@ async function projectPage(id) {
           <div><span>Received online</span><span>${money(p.online)}</span></div>
         </div>
         <div class="totals plain">
-          <div><span>Vendor bills</span><span>${money(p.vendorBilled)}</span></div>
-          <div><span>Paid to vendors</span><span>${money(p.vendorPaid)}</span></div>
-          <div><span>Vendors still to pay</span><span>${money(p.vendorDue)}</span></div>
+          ${p.costsByType.map((x) => `<div><span>${esc(x.type)}</span><span>${money(x.amount)}</span></div>`).join('')}
+          <div class="strong"><span>Total costs</span><span>${money(p.vendorCost)}</span></div>
+          <div><span>Costs paid</span><span>${money(p.vendorPaid)}</span></div>
+          <div><span>Costs still to pay</span><span>${money(p.vendorDue)}</span></div>
           <div class="strong"><span>${profitLabel(p.status)}</span><span>${money(p.profit)}</span></div>
         </div>
       </div>
@@ -1272,6 +1292,8 @@ async function projectPage(id) {
         <button class="btn go">Mark as Completed</button>
       </form>`}
     </div>
+    </section>
+    <section ${panel('customer')}>
     <div class="card">
       <h2>Customer payments</h2>
       ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
@@ -1284,30 +1306,47 @@ async function projectPage(id) {
         <button class="btn main">Add Payment</button>
       </form></details>` : '<p class="alert good">This bill is fully paid.</p>'}
     </div>
+    </section>
+    <section ${panel('costs')}>
     <div class="card">
-      <h2>Vendor bills</h2>
-      <p class="muted" style="margin:-8px 0 10px">What each vendor charged for this job, whether paid or not.</p>
-      ${p.vendorBills.length ? `<div class="scroll"><table><tr><th>Date</th><th>Vendor</th><th>For</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorBillRows}</table></div>` : '<p class="muted">No vendor bills yet.</p>'}
-      ${finished ? '<p class="muted" style="margin-bottom:0">Reopen this project to add a late vendor bill.</p>' : `<details class="adder" ${addOpen()}><summary>+ Add Vendor Bill</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-bills">
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Vendor<input name="vendor" maxlength="120" required></label>
+      <h2>Project costs</h2>
+      <p class="muted" style="margin:-8px 0 10px">Glass, installation, transport and anything else this job costs. Add the total once, and each payment reduces the balance.</p>
+      ${p.vendorBills.length ? costRows : '<p class="muted">No costs yet.</p>'}
+      ${p.vendorBills.length ? `<div class="cost-total"><span>Total ${money(p.vendorCost)}</span><span>Paid ${money(p.vendorPaid)}</span><b>Still to pay ${money(p.vendorDue)}</b></div>` : ''}
+      ${finished ? '<p class="muted" style="margin-bottom:0">Reopen this project to add a late cost.</p>' : `<details class="adder" ${addOpen()}><summary>+ Add Cost</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-bills">
+        <fieldset class="choices"><legend>Type</legend>${p.costTypes.map((type, index) => `<label><input type="radio" name="category" value="${esc(type)}" ${index ? '' : 'checked'}><span>${esc(type)}</span></label>`).join('')}</fieldset>
+        <label>Paid to<input name="vendor" maxlength="120" required></label>
         <label>For<input name="description" maxlength="200"></label>
-        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        <button class="btn main">Add Vendor Bill</button>
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Total amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        <label>Paid now (optional)<input type="number" name="paidNow" min="0" step="0.01" inputmode="decimal"></label>
+        ${methodSelect}
+        <button class="btn main">Add Cost</button>
       </form></details>`}
+      ${unpaid.length ? `<details class="adder" id="payAdder"><summary>+ Pay a Cost</summary><form class="entry" id="payCost" data-post="/api/projects/${p.id}/vendor-payments">
+        <label>Cost<select name="vendorBillId" required>${unpaid.map((x) => `<option value="${x.id}" data-due="${x.due}">${esc(x.category)}: ${esc(x.vendor)} (${money(x.due)} left)</option>`).join('')}</select></label>
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label><span class="label-row">Amount<button type="button" class="link" id="fullCost">Full balance</button></span><input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        ${methodSelect}
+        <label>Note<input name="note" maxlength="300"></label>
+        <button class="btn main">Save Payment</button>
+      </form></details>` : ''}
     </div>
     <div class="card">
-      <h2>Vendor payments</h2>
-      ${p.vendorPayments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Vendor</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No vendor payments yet.</p>'}
-      <details class="adder" ${addOpen()}><summary>+ Add Vendor Payment</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-payments">
-        <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Vendor<input name="vendor" maxlength="120" required></label>
-        <label>Paid for<input name="description" maxlength="200"></label>
-        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
-        ${methodSelect}
-        <button class="btn main">Add Vendor Payment</button>
-      </form></details>
-    </div>`);
+      <h2>Payments made</h2>
+      ${p.vendorPayments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid to</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No payments made yet.</p>'}
+    </div>
+    </section>`);
+  root.querySelectorAll('[data-tab]').forEach((button) => {
+    button.onclick = () => {
+      projectView.tab = button.dataset.tab;
+      root.querySelectorAll('[data-tab]').forEach((tab) => {
+        if (tab === button) tab.setAttribute('aria-current', 'true');
+        else tab.removeAttribute('aria-current');
+      });
+      root.querySelectorAll('[data-panel]').forEach((section) => { section.hidden = section.dataset.panel !== projectView.tab; });
+    };
+  });
   document.getElementById('order').onsubmit = async (event) => {
     event.preventDefault();
     try {
@@ -1332,12 +1371,12 @@ async function projectPage(id) {
   if (complete) {
     complete.onsubmit = async (event) => {
       event.preventDefault();
-      const due = p.vendorBilled === 0 && p.vendorPaid === 0;
+      const noCosts = p.vendorBills.length === 0;
       const sure = await openDialog({
         title: 'Mark this project as completed?',
-        message: due
-          ? `No vendor costs are recorded, so the full ${money(p.orderValue)} would count as confirmed profit. Add vendor bills first if there are any.`
-          : `Confirmed profit will be ${money(p.profit)}. You can still record payments, and reopen it for a late vendor bill.`,
+        message: noCosts
+          ? `No costs are recorded, so the full ${money(p.orderValue)} would count as confirmed profit. Add any glass, installation or transport costs first.`
+          : `Confirmed profit will be ${money(p.profit)}. You can still record payments, and reopen it for a late cost.`,
         confirmLabel: 'Mark as Completed',
       });
       if (sure) setStatus({ status: 'completed', completedOn: new FormData(complete).get('completedOn') }, 'Project completed');
@@ -1363,6 +1402,28 @@ async function projectPage(id) {
       amount.focus();
     };
   }
+  const payCost = document.getElementById('payCost');
+  if (payCost) {
+    const cost = payCost.elements.vendorBillId;
+    const amount = payCost.elements.amount;
+    const setLimit = () => { amount.max = cost.selectedOptions[0].dataset.due; };
+    setLimit();
+    cost.onchange = setLimit;
+    document.getElementById('fullCost').onclick = (event) => {
+      event.preventDefault();
+      amount.value = amount.max;
+      amount.focus();
+    };
+    root.querySelectorAll('[data-pay]').forEach((button) => {
+      button.onclick = () => {
+        cost.value = button.dataset.pay;
+        setLimit();
+        document.getElementById('payAdder').open = true;
+        payCost.scrollIntoView({ block: 'center' });
+        amount.focus({ preventScroll: true });
+      };
+    });
+  }
   wireMoneyPage(() => projectPage(id));
 }
 
@@ -1384,7 +1445,7 @@ async function accountsPage() {
     <div class="stats">
       ${stat('Left over this month', money(a.leftOver), true)}
       ${stat('Money in', money(a.moneyIn))}
-      ${stat('Paid to vendors', money(a.vendorPaid))}
+      ${stat('Project costs paid', money(a.vendorPaid))}
       ${stat('Shop expenses', money(a.expensesTotal))}
     </div>
     <div class="card">

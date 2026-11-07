@@ -267,7 +267,8 @@ footer{padding:24px 20px 40px;text-align:center;color:var(--muted);font-size:13p
       <div class="entity"><h3>users</h3><p>username, role, active, pass_hash, salt</p></div>
       <div class="entity"><h3>sessions</h3><p>token_hash, user_id, expires_at</p></div>
       <div class="entity"><h3>payments</h3><p>bill_id, date, amount, cash or online, reference</p></div>
-      <div class="entity"><h3>vendor_payments</h3><p>bill_id, vendor, amount, method</p></div>
+      <div class="entity"><h3>vendor_bills</h3><p>bill_id, category, vendor, amount</p></div>
+      <div class="entity"><h3>vendor_payments</h3><p>bill_id, vendor_bill_id, vendor, amount, method</p></div>
       <div class="entity"><h3>expenses</h3><p>date, category, amount, method</p></div>
       <div class="entity"><h3>investments</h3><p>person, paid_for, amount</p></div>
       <div class="entity"><h3>glass_types</h3><p>name, hsn, thickness, rate, gst_percent</p></div>
