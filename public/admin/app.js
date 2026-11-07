@@ -48,6 +48,9 @@ const ICONS = {
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/>',
 };
 
+const THEME_ICONS = `<svg class="theme-icon theme-to-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg>
+  <svg class="theme-icon theme-to-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.900 4.900l1.400 1.400M17.700 17.700l1.400 1.400M2 12h2M20 12h2M4.900 19.100l1.400-1.400M17.700 6.300l1.400-1.400"/></svg>`;
+
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
@@ -62,6 +65,7 @@ function shell(active, content) {
         <div class="who">
           <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
+          <button type="button" id="themeBtn" aria-label="Switch between light and dark theme" title="Switch theme">${THEME_ICONS}</button>
           <button id="logout" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H10"/></svg></button>
         </div>
       </aside>
@@ -75,6 +79,7 @@ function shell(active, content) {
           <p class="sheet-who">${esc(me.name)} · ${me.role === 'admin' ? 'Admin' : 'Partner'}</p>
           ${more.map(([hash, label]) => link(hash, label)).join('')}
           ${canOfferInstall() ? '<button type="button" class="sheet-install" id="sheetInstall">Install App</button>' : ''}
+          <button type="button" class="sheet-theme" id="sheetTheme">${THEME_ICONS}<span class="theme-to-dark">Dark theme</span><span class="theme-to-light">Light theme</span></button>
           <button type="button" id="sheetLogout">Sign out</button>
         </div>
       </div>
@@ -90,6 +95,8 @@ function shell(active, content) {
     renderLogin();
   };
   document.getElementById('quickAdd').onclick = () => openQuickAdd();
+  document.getElementById('themeBtn').onclick = window.toggleTheme;
+  document.getElementById('sheetTheme').onclick = window.toggleTheme;
   document.getElementById('logout').onclick = signOut;
   document.getElementById('sheetLogout').onclick = signOut;
   showEnquiryBadge();
@@ -1109,7 +1116,7 @@ function wireTrend(months) {
     const every = width < 480 ? 3 : width < 700 ? 2 : 1;
     const month = months[picked];
     box.innerHTML = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
-      <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2f6fb0" stop-opacity=".24"/><stop offset="100%" stop-color="#2f6fb0" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-opacity=".24"/><stop offset="100%" stop-opacity="0"/></linearGradient></defs>
       ${[...new Set([top, top / 2, 0, bottom])].map((tick) => `<line class="grid-line" x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}"/><text class="axis" x="${left - 8}" y="${y(tick) + 4}" text-anchor="end">${esc(shortMoney(tick).replace('.0', ''))}</text>`).join('')}
       <path d="${area}" fill="url(#salesFill)"/>
       <path class="trend-line sales" d="${line('sales')}"/>
@@ -1140,8 +1147,8 @@ function wireTrend(months) {
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (box.clientWidth !== drawnWidth) draw(); }).observe(box);
 }
 
-// These colours passed the colour-blind check together. A colour always means the same thing.
-const SPLIT_COLOURS = { Glass: '#2f6fb0', Installation: '#c9503f', Transport: '#7b5cc4', 'Other costs': '#d9a441', 'Shop expenses': '#c2559b', 'Left over': '#1f9a6a' };
+// Each theme's colours passed the colour-blind check in this order, so keep the order.
+const SPLIT_COLOURS = { Glass: 'var(--split-glass)', Installation: 'var(--split-installation)', Transport: 'var(--split-transport)', 'Other costs': 'var(--split-other)', 'Shop expenses': 'var(--split-shop)', 'Left over': 'var(--split-left)' };
 
 function splitCard(o) {
   const head = '<div class="chart-head"><h2>Where your sales money goes</h2></div>';
