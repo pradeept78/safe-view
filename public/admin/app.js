@@ -1001,7 +1001,7 @@ const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString
 const monthLong = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
 // Bars are plain HTML, so they stay readable at any width and need no chart library.
-function monthlyBars(months, key, title, kind) {
+function monthlyBars(months, key, title, kind, emptyText) {
   const values = months.map((m) => m[key]);
   const top = Math.max(0, ...values);
   const bottom = Math.min(0, ...values);
@@ -1021,7 +1021,7 @@ function monthlyBars(months, key, title, kind) {
   return `<div class="card chart">
     <div class="chart-head"><h2>${esc(title)}</h2><span class="muted">Last 12 months</span></div>
     ${hasData ? `<div class="chart-scale"><span>Highest ${esc(shortMoney(top))}</span>${bottom < 0 ? `<span>Lowest ${esc(shortMoney(bottom))}</span>` : ''}</div>
-    <div class="bars">${bars}</div>` : '<p class="muted chart-empty">Nothing to show yet. This fills in as you win orders.</p>'}
+    <div class="bars">${bars}</div>` : `<p class="muted chart-empty">${esc(emptyText)}</p>`}
   </div>`;
 }
 
@@ -1029,30 +1029,31 @@ async function overviewPage() {
   const o = await api('/api/overview');
   const row = (label, value, strong) => `<div class="${strong ? 'strong' : ''}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
   const decided = o.won + o.lost;
-  const tableRows = o.months.map((m) => `<tr><td>${esc(monthLong(m.month))}</td><td class="n">${money(m.sales)}</td><td class="n">${money(m.vendorPaid)}</td><td class="n">${money(m.expenses)}</td><td class="n">${money(m.profit)}</td></tr>`).join('');
+  const tableRows = o.months.map((m) => `<tr><td>${esc(monthLong(m.month))}</td><td class="n">${money(m.sales)}</td><td class="n">${money(m.confirmedProfit)}</td><td class="n">${money(m.expenses)}</td><td class="n">${money(m.net)}</td></tr>`).join('');
   shell('overview', `
     <div class="head"><h1>Overview</h1></div>
     <div class="stats">
       ${stat('Total sales', money(o.sales), true)}
-      ${stat('Total profit', money(o.profit))}
+      ${stat('Confirmed profit', money(o.confirmedProfit))}
+      ${stat('Expected profit', money(o.expectedProfit))}
       ${stat('Total investment', money(o.investment))}
-      ${stat('Still to collect', money(o.toCollect))}
     </div>
     <div class="charts">
-      ${monthlyBars(o.months, 'sales', 'Sales by month', 'sales')}
-      ${monthlyBars(o.months, 'profit', 'Profit by month', 'profit')}
+      ${monthlyBars(o.months, 'sales', 'Sales by month', 'sales', 'Nothing to show yet. This fills in as you win orders.')}
+      ${monthlyBars(o.months, 'confirmedProfit', 'Confirmed profit by month', 'profit', 'Nothing to show yet. This fills in as you complete projects.')}
     </div>
     <div class="grid3-cards">
-      <div class="card"><h2>How profit is worked out</h2><div class="totals plain">
-        ${row('Sales before GST', money(o.sales))}
-        ${row('Paid to vendors', money(-o.vendorPaid))}
+      <div class="card"><h2>Profit</h2><div class="totals plain">
+        ${row(`Confirmed (${o.completed} completed)`, money(o.confirmedProfit))}
         ${row('Shop expenses', money(-o.expenses))}
-        ${row('Profit', money(o.profit), true)}
+        ${row('After shop expenses', money(o.afterExpenses), true)}
+        ${row(`Expected (${o.inProgress} in progress)`, money(o.expectedProfit))}
       </div></div>
       <div class="card"><h2>Money</h2><div class="totals plain">
         ${row('Billed with GST', money(o.billed))}
         ${row('Received', money(o.received))}
         ${row('Still to collect', money(o.toCollect), true)}
+        ${row('Vendors still to pay', money(o.vendorDue))}
       </div></div>
       <div class="card"><h2>Investment</h2><div class="totals plain">
         ${row('Total invested', money(o.investment))}
@@ -1067,9 +1068,9 @@ async function overviewPage() {
       </div></div>
     </div>
     <details class="card table-view"><summary>See monthly numbers as a table</summary>
-      <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Vendors</th><th class="n">Expenses</th><th class="n">Profit</th></tr>${tableRows}</table></div>
+      <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Confirmed profit</th><th class="n">Expenses</th><th class="n">After expenses</th></tr>${tableRows}</table></div>
     </details>
-    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted, and costs in the month they were paid, so one month's profit can look high or low. This is a guide for running the shop, not an accounting statement.</p>`);
+    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as vendor bills arrive. This is a guide for running the shop, not an accounting statement.</p>`);
 }
 
 // ----- Quotation report -----
@@ -1192,25 +1193,29 @@ function wireMoneyPage(redraw) {
 }
 
 // ----- Projects -----
+const projectBadge = (status) => `<span class="badge ${status === 'completed' ? 'q-won' : 'q-waiting'}">${status === 'completed' ? 'Completed' : 'In progress'}</span>`;
+const profitLabel = (status) => (status === 'completed' ? 'Confirmed profit' : 'Expected profit');
+
 async function projectsPage() {
   const projects = await api('/api/projects');
-  const total = (key) => projects.reduce((sum, project) => sum + project[key], 0);
+  const total = (key, list = projects) => list.reduce((sum, project) => sum + project[key], 0);
+  const finished = projects.filter((project) => project.status === 'completed');
   const rows = projects.map((p) => `
     <tr class="link" data-id="${p.id}">
-      <td>${esc(p.number)}</td><td>${esc(p.customerName)}</td><td>${shortDate(p.acceptedOn)}</td>
+      <td>${esc(p.number)}</td><td>${esc(p.customerName)}</td><td>${projectBadge(p.status)}</td><td>${shortDate(p.acceptedOn)}</td>
       <td class="n">${money(p.grandTotal)}</td><td class="n">${money(p.received)}</td><td class="n">${money(p.balance)}</td>
-      <td class="n">${money(p.vendorPaid)}</td><td class="n ${p.profit < 0 ? 'loss' : 'gain'}">${money(p.profit)}</td>
+      <td class="n">${money(p.vendorCost)}</td><td class="n ${p.profit < 0 ? 'loss' : 'gain'}">${money(p.profit)}</td>
     </tr>`).join('');
   shell('projects', `
     <div class="head"><h1>Projects</h1></div>
     <div class="stats">
       ${stat('Still to collect', money(total('balance')), true)}
-      ${stat('Received', money(total('received')))}
-      ${stat('Paid to vendors', money(total('vendorPaid')))}
-      ${stat('Profit before shop expenses', money(total('profit')))}
+      ${stat('Vendors still to pay', money(total('vendorDue')))}
+      ${stat('Confirmed profit', money(total('profit', finished)))}
+      ${stat('In progress', String(projects.length - finished.length))}
     </div>
     <div class="card scroll">
-      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
+      ${projects.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
     : '<p class="muted">Quotations appear here as projects once they are marked as won.</p>'}
     </div>`);
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
@@ -1218,51 +1223,78 @@ async function projectsPage() {
 
 async function projectPage(id) {
   const p = await api(`/api/projects/${id}`);
+  const finished = p.status === 'completed';
   const paymentRows = p.payments.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.reference)}</td><td>${esc(x.note)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('payments', x.id)}</td></tr>`).join('');
+  const vendorBillRows = p.vendorBills.map((x) => `
+    <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-bills', x.id)}</td></tr>`).join('');
   const vendorRows = p.vendorPayments.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-payments', x.id)}</td></tr>`).join('');
   shell('projects', `
     <div class="head">
       <div><h1>${esc(p.number)}</h1><p class="muted" style="margin:4px 0 0">${esc(p.customerName)}</p></div>
-      <a class="btn" href="#/bill/${p.id}">View Bill</a>
+      <div class="head-actions">${projectBadge(p.status)}<a class="btn" href="#/bill/${p.id}">View Bill</a></div>
     </div>
     <div id="msg"></div>
     <div class="stats">
       ${stat('Balance to collect', money(p.balance), true)}
       ${stat('Received', money(p.received))}
-      ${stat('Paid to vendors', money(p.vendorPaid))}
-      ${stat('Profit', money(p.profit))}
+      ${stat('Vendor costs', money(p.vendorCost))}
+      ${stat(profitLabel(p.status), money(p.profit))}
     </div>
+    ${finished ? '' : `<p class="alert warn">Profit is an estimate until this project is completed. Add all vendor bills first.</p>`}
     <div class="card">
       <div class="split">
         <div class="totals plain">
           <div><span>Order value before GST</span><span>${money(p.orderValue)}</span></div>
           <div><span>GST</span><span>${money(p.gst)}</span></div>
           <div class="strong"><span>Bill total</span><span>${money(p.grandTotal)}</span></div>
-        </div>
-        <div class="totals plain">
           <div><span>Received in cash</span><span>${money(p.cash)}</span></div>
           <div><span>Received online</span><span>${money(p.online)}</span></div>
-          <div class="strong"><span>Profit (order value − vendors)</span><span>${money(p.profit)}</span></div>
+        </div>
+        <div class="totals plain">
+          <div><span>Vendor bills</span><span>${money(p.vendorBilled)}</span></div>
+          <div><span>Paid to vendors</span><span>${money(p.vendorPaid)}</span></div>
+          <div><span>Vendors still to pay</span><span>${money(p.vendorDue)}</span></div>
+          <div class="strong"><span>${profitLabel(p.status)}</span><span>${money(p.profit)}</span></div>
         </div>
       </div>
     </div>
-    <form class="card order" id="order">
-      <label>Order accepted on<input type="date" name="acceptedOn" value="${esc(p.acceptedOn || '')}"></label>
-      <button class="btn">Save Date</button>
-    </form>
+    <div class="card dates">
+      <form class="order" id="order">
+        <label>Order accepted on<input type="date" name="acceptedOn" value="${esc(p.acceptedOn || '')}"></label>
+        <button class="btn">Save Date</button>
+      </form>
+      ${finished
+    ? `<div class="order"><p class="muted" style="margin:0">Completed on ${shortDate(p.completedOn)}.</p><button class="btn" id="reopenProject">Reopen Project</button></div>`
+    : `<form class="order" id="complete">
+        <label>Project finished on<input type="date" name="completedOn" value="${today()}" required></label>
+        <button class="btn go">Mark as Completed</button>
+      </form>`}
+    </div>
     <div class="card">
       <h2>Customer payments</h2>
       ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
       ${p.balance > 0 ? `<details class="adder" ${addOpen()}><summary>+ Add Payment</summary><form class="entry" data-post="/api/projects/${p.id}/payments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Amount<input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
+        <label><span class="label-row">Amount<button type="button" class="link" id="fullBalance" data-balance="${p.balance}">Full balance</button></span><input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
         <label>UPI or bank reference<input name="reference" maxlength="80"></label>
         <label>Note<input name="note" maxlength="300"></label>
         <button class="btn main">Add Payment</button>
       </form></details>` : '<p class="alert good">This bill is fully paid.</p>'}
+    </div>
+    <div class="card">
+      <h2>Vendor bills</h2>
+      <p class="muted" style="margin:-8px 0 10px">What each vendor charged for this job, whether paid or not.</p>
+      ${p.vendorBills.length ? `<div class="scroll"><table><tr><th>Date</th><th>Vendor</th><th>For</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorBillRows}</table></div>` : '<p class="muted">No vendor bills yet.</p>'}
+      ${finished ? '<p class="muted" style="margin-bottom:0">Reopen this project to add a late vendor bill.</p>' : `<details class="adder" ${addOpen()}><summary>+ Add Vendor Bill</summary><form class="entry" data-post="/api/projects/${p.id}/vendor-bills">
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Vendor<input name="vendor" maxlength="120" required></label>
+        <label>For<input name="description" maxlength="200"></label>
+        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        <button class="btn main">Add Vendor Bill</button>
+      </form></details>`}
     </div>
     <div class="card">
       <h2>Vendor payments</h2>
@@ -1283,9 +1315,54 @@ async function projectPage(id) {
       showAlert('msg', 'Order date saved', 'good');
     } catch (error) {
       showAlert('msg', error.message);
+      window.scrollTo(0, 0);
     }
-    window.scrollTo(0, 0);
   };
+  const setStatus = async (body, message) => {
+    try {
+      await api(`/api/projects/${id}/status`, 'PUT', body);
+      await projectPage(id);
+      showToast(message);
+    } catch (error) {
+      showAlert('msg', error.message);
+      window.scrollTo(0, 0);
+    }
+  };
+  const complete = document.getElementById('complete');
+  if (complete) {
+    complete.onsubmit = async (event) => {
+      event.preventDefault();
+      const due = p.vendorBilled === 0 && p.vendorPaid === 0;
+      const sure = await openDialog({
+        title: 'Mark this project as completed?',
+        message: due
+          ? `No vendor costs are recorded, so the full ${money(p.orderValue)} would count as confirmed profit. Add vendor bills first if there are any.`
+          : `Confirmed profit will be ${money(p.profit)}. You can still record payments, and reopen it for a late vendor bill.`,
+        confirmLabel: 'Mark as Completed',
+      });
+      if (sure) setStatus({ status: 'completed', completedOn: new FormData(complete).get('completedOn') }, 'Project completed');
+    };
+  }
+  const reopenProject = document.getElementById('reopenProject');
+  if (reopenProject) {
+    reopenProject.onclick = async () => {
+      const sure = await openDialog({
+        title: 'Reopen this project?',
+        message: 'Its profit moves back to expected until you complete it again.',
+        confirmLabel: 'Reopen Project',
+      });
+      if (sure) setStatus({ status: 'in_progress' }, 'Project reopened');
+    };
+  }
+  const fullBalance = document.getElementById('fullBalance');
+  if (fullBalance) {
+    fullBalance.onclick = (event) => {
+      event.preventDefault();
+      const amount = fullBalance.closest('label').querySelector('input');
+      amount.value = fullBalance.dataset.balance;
+      amount.focus();
+    };
+  }
   wireMoneyPage(() => projectPage(id));
 }
 

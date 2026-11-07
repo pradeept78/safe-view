@@ -54,8 +54,9 @@ function registerQuotationRoutes(app, { db, requireLogin, Problem, text }) {
   app.put('/api/quotations/:id/reopen', requireLogin, (req, res) => {
     const bill = findQuotation(req.params.id);
     if (bill.invoice_number) throw new Problem(409, 'A tax invoice has been issued, so this order cannot be reopened');
+    if (bill.project_status === 'completed') throw new Problem(409, 'Reopen the project before reopening this quotation');
     const count = (table) => db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE bill_id = ?`).get(bill.id).n;
-    if (count('payments') || count('vendor_payments')) {
+    if (count('payments') || count('vendor_payments') || count('vendor_bills')) {
       throw new Problem(409, 'This project has payments recorded. Ask the admin to delete them before reopening it.');
     }
     db.prepare("UPDATE bills SET quote_status = 'waiting', order_accepted_on = NULL, lost_reason = '', lost_note = '' WHERE id = ?").run(bill.id);

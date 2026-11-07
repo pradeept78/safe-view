@@ -78,14 +78,16 @@ The Activity page shows the admin who did what. It records actions, never passwo
 ## Overview
 
 The Overview page shows total sales, profit and investment, with monthly graphs. Sales and profit leave out GST.
-Profit is won orders minus vendor payments and shop expenses.
+Confirmed profit comes from completed projects. Expected profit comes from projects still in progress.
 
 ## How money tracking works
 
 - An approved bill is a quotation waiting for the customer. Mark it as won with the order date, or lost with a reason.
 - Only won quotations become projects. Add part payments and vendor payments to them.
 - The Quotations page shows how many were sent, won and lost, the win rate, why orders were lost, and follow-ups.
-- Profit is the order value before GST, minus vendor payments. Shop expenses are not taken off a project.
+- Add vendor bills as they arrive, then mark the project as completed. Vendor bills count as costs even before they are paid.
+- Profit is the order value before GST, minus vendor costs. It is expected until completed, then confirmed.
+- Shop expenses are not taken off a project. Overview shows confirmed profit after shop expenses.
 - Monthly Accounts shows cash and online money in, vendor payments and shop expenses for a month.
 - Investment shows who put in how much, and what it paid for.
 - Partners can add entries. Only the admin can delete them.
