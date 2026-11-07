@@ -64,7 +64,7 @@ function shell(active, content) {
         <button type="button" class="quick-btn" id="quickAdd"><span aria-hidden="true">+</span> Quick add</button>
         <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
-          <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
+          <a class="avatar" href="#/account" aria-label="My Account">${esc(me.name.charAt(0).toUpperCase())}</a>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
           <button type="button" id="themeBtn" aria-label="Switch between light and dark theme" title="Switch theme">${THEME_ICONS}</button>
           <button id="logout" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l4 4-4 4M19 12H10"/></svg></button>
@@ -224,6 +224,9 @@ function renderLogin() {
   };
 }
 
+// Open on a laptop. On a phone it folds to one line, which keeps long pages short.
+const fold = (title, content) => `<details class="fold" ${window.innerWidth > 640 ? 'open' : ''}><summary>${esc(title)}</summary>${content}</details>`;
+
 // A row of tap filters. The caller decides what a tap does.
 const chips = (id, label, options, chosen) => `<div class="chips" id="${id}" role="group" aria-label="${label}">
   ${options.map(([value, text]) => `<button type="button" data-value="${value}" aria-pressed="${value === chosen}">${text}</button>`).join('')}
@@ -286,14 +289,14 @@ async function billsPage() {
   shell('bills', `
     <div class="head"><h1>Bills</h1><a class="btn main" href="#/bill/new">+ New Bill</a></div>
     <div class="stats">
-      <div class="stat hot"><small>Approved this month</small><b>${money(stats.approvedThisMonth).replace(/\.\d+$/, '')}</b></div>
+      <div class="stat hot"><small>Approved this month</small><b>${wholeMoney(stats.approvedThisMonth)}</b></div>
       <div class="stat"><small>Waiting for approval</small><b>${stats.waiting}</b></div>
       <div class="stat"><small>Drafts</small><b>${stats.drafts}</b></div>
       <div class="stat"><small>New enquiries</small><b>${newEnquiries}</b></div>
     </div>
     ${me.role === 'admin' && stats.waiting ? `<div class="alert warn">${stats.waiting} bill${stats.waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
     <div class="finder">
-      <label>Search<input id="billSearch" type="search" placeholder="Customer, phone, bill or invoice number" value="${esc(billList.q)}"></label>
+      <input id="billSearch" type="search" aria-label="Search bills" placeholder="Search customer, phone or bill number" value="${esc(billList.q)}">
     </div>
     ${chips('billStatus', 'Show bills', BILL_FILTER_LABELS, billList.status)}
     <div class="card scroll" id="billResults"></div>`);
@@ -358,7 +361,7 @@ async function billPage(id) {
   const off = editable ? '' : 'disabled';
   const v = (key) => esc(bill ? bill[key] : '');
   const missing = ['gstin', 'address', 'bank_account'].filter((key) => !settings[key]);
-  const showMore = !editable || window.innerWidth > 640 || ['customerAddress', 'customerGstin', 'customerStateCode', 'projectRemark'].some((key) => bill?.[key]);
+  const showMore = window.innerWidth > 640 || (editable && ['customerAddress', 'customerGstin', 'customerStateCode', 'projectRemark'].some((key) => bill?.[key]));
 
   shell('bills', `
     <div class="head">
@@ -425,7 +428,22 @@ async function billPage(id) {
     return `Manual · list ${money(line.listRate)}${reset}`;
   }
 
+  function drawFixedLines() {
+    const table = document.getElementById('lines');
+    table.classList.add('fixed-lines');
+    table.innerHTML = `<tr><th>Material</th><th>Size (mm)</th><th>Qty</th><th>Rate / sq m</th><th>GST %</th><th class="n">Area</th><th class="n">Amount</th></tr>
+      ${state.lines.map((line, i) => `<tr data-i="${i}">
+        <td>${esc(line.glassName)}</td><td>${esc(line.widthMm)} × ${esc(line.heightMm)}</td><td>${esc(line.qty)}</td>
+        <td>${money(line.rate)}<div class="hint" data-hint>${rateHint(line, i)}</div></td><td>${esc(line.gstPercent)}%</td>
+        <td class="n" data-area>–</td><td class="n" data-amount>–</td>
+      </tr>`).join('')}`;
+  }
+
   function drawLines() {
+    if (!editable) {
+      drawFixedLines();
+      return;
+    }
     const options = (line) => `${glass.map((g) => `<option ${!line.custom && g.name === line.glassName ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
       <option value="${OTHER}" ${line.custom ? 'selected' : ''}>Other (type manually)</option>`;
     document.getElementById('lines').innerHTML = `
@@ -830,14 +848,14 @@ function drawActivity() {
   const rows = activityList.items.map((a) => `
     <tr><td>${esc(when(a.created_at))}</td><td>${esc(a.who)}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`).join('');
   box.innerHTML = activityList.items.length ? `
-    <table><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th></tr>${rows}</table>
+    <table class="ledger"><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th></tr>${rows}</table>
     <p class="muted list-count">Showing ${activityList.items.length} of ${activityList.total}</p>
     ${activityList.items.length < activityList.total ? '<button class="btn load-more" id="moreActivity">Load More</button>' : ''}`
     : '<p class="muted">Nothing recorded yet.</p>';
   const more = document.getElementById('moreActivity');
   if (more) {
     more.onclick = async () => {
-      const next = await api(`/api/activity?offset=${activityList.items.length}`);
+      const next = await api(`/api/activity?limit=25&offset=${activityList.items.length}`);
       activityList.items.push(...next.entries);
       activityList.total = next.total;
       drawActivity();
@@ -846,7 +864,7 @@ function drawActivity() {
 }
 
 async function activityPage() {
-  const first = await api('/api/activity');
+  const first = await api('/api/activity?limit=25');
   activityList.items = first.entries;
   activityList.total = first.total;
   shell('activity', `
@@ -874,7 +892,7 @@ async function usersPage() {
       <table class="lines"><tr><th>Name</th><th>Username</th><th>Role</th><th>Access</th><th></th></tr>${users.map(row).join('')}</table>
       <p class="muted" style="margin-bottom:0">Admins can approve bills and manage users. Partners can make bills and add entries. If you change a username, tell that person, because they sign in with the new one. To remove someone, untick Can sign in, because their name stays on past bills.</p>
     </div>
-    <form class="card" id="add">
+    ${fold('Add a user', `    <form class="card" id="add">
       <h2>Add a user</h2>
       <div class="entry" style="margin:0;padding:0;border:0">
         <label>Name<input name="name" maxlength="80" required></label>
@@ -883,7 +901,7 @@ async function usersPage() {
         <label>First password (at least 8 characters)<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
         <button class="btn main">Add User</button>
       </div>
-    </form>`);
+    </form>`)}`);
   document.getElementById('add').onsubmit = async (event) => {
     event.preventDefault();
     try {
@@ -1189,7 +1207,7 @@ function wireTrend(months) {
     const width = box.clientWidth;
     if (!width) return;
     drawnWidth = width;
-    const height = width < 480 ? 190 : 230;
+    const height = width < 480 ? 165 : 230;
     const floor = height - 26;
     const values = months.flatMap((month) => [month.sales, month.confirmedProfit]);
     const top = tidyTop(Math.max(...values, 0));
@@ -1270,7 +1288,7 @@ async function overviewPage() {
       ${trendCard(o.months)}
       ${splitCard(o)}
     </div>
-    <div class="grid3-cards">
+    ${fold('More numbers', `    <div class="grid3-cards">
       <div class="card"><h2>Profit</h2><div class="totals plain">
         ${row(`Confirmed (${o.completed} completed)`, money(o.confirmedProfit))}
         ${row('Shop expenses', money(-o.expenses))}
@@ -1298,7 +1316,7 @@ async function overviewPage() {
     <details class="card table-view"><summary>See monthly numbers as a table</summary>
       <div class="scroll"><table><tr><th>Month</th><th class="n">Sales</th><th class="n">Confirmed profit</th><th class="n">Expenses</th><th class="n">After expenses</th></tr>${tableRows}</table></div>
     </details>
-    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as project costs arrive. This is a guide for running the shop, not an accounting statement.</p>`);
+    <p class="muted">Sales and profit leave out GST. Sales count in the month the order was accepted. Confirmed profit counts when a project is completed. Expected profit can change as project costs arrive. This is a guide for running the shop, not an accounting statement.</p>`)}`);
   wireTrend(o.months);
 }
 
@@ -1351,7 +1369,7 @@ async function quotationsPage() {
       ${stat('Won', q.won)}
       ${stat('Lost', q.lost)}
     </div>
-    <div class="card">
+    ${fold('Value and lost reasons', `    <div class="card">
       <div class="split">
         <div class="totals plain">
           <h2>Value before GST</h2>
@@ -1369,10 +1387,10 @@ async function quotationsPage() {
         </div>
       </div>
       <p class="muted" style="margin-bottom:0">Win rate is won ÷ (won + lost). Quotations still waiting are not counted. Dates use the day each bill was approved.</p>
-    </div>
+    </div>`)}
     ${q.followUps.length ? `<div class="card scroll">
       <h2>Follow-ups</h2>
-      <table><tr><th>Call on</th><th>Bill</th><th>Customer</th><th>Phone</th><th class="n">Value</th></tr>${followRows}</table>
+      <table class="ledger"><tr><th>Call on</th><th>Bill</th><th>Customer</th><th>Phone</th><th class="n">Value</th></tr>${followRows}</table>
     </div>` : ''}
     <div class="card">
       <div class="head" style="margin-bottom:10px">
@@ -1462,9 +1480,9 @@ async function projectsPage() {
   shell('projects', `
     <div class="head"><h1>Projects</h1></div>
     <div class="stats">
-      ${stat('Still to collect', money(total('balance')), true)}
-      ${stat('Costs still to pay', money(total('vendorDue')))}
-      ${stat('Confirmed profit', money(total('profit', finished)))}
+      ${stat('Still to collect', wholeMoney(total('balance')), true)}
+      ${stat('Costs still to pay', wholeMoney(total('vendorDue')))}
+      ${stat('Confirmed profit', wholeMoney(total('profit', finished)))}
       ${stat('In progress', String(projects.length - finished.length))}
     </div>
     ${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
@@ -1507,10 +1525,10 @@ async function projectPage(id) {
     </div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Balance to collect', money(p.balance), true)}
-      ${stat('Received', money(p.received))}
-      ${stat('Project costs', money(p.vendorCost))}
-      ${stat(profitLabel(p.status), money(p.profit))}
+      ${stat('Balance to collect', wholeMoney(p.balance), true)}
+      ${stat('Received', wholeMoney(p.received))}
+      ${stat('Project costs', wholeMoney(p.vendorCost))}
+      ${stat(profitLabel(p.status), wholeMoney(p.profit))}
     </div>
     <nav class="tabs" aria-label="Project sections">
       ${PROJECT_TABS.map(([name, label]) => `<button type="button" data-tab="${name}" ${projectView.tab === name ? 'aria-current="true"' : ''}>${label}</button>`).join('')}
@@ -1550,22 +1568,21 @@ async function projectPage(id) {
     </section>
     <section ${panel('customer')}>
     <div class="card">
-      <h2>Customer payments</h2>
-      ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
-      ${p.balance > 0 ? `<div class="add-row"><button type="button" class="btn main" data-quick="payment" data-project="${p.id}">+ Add Payment</button></div>` : '<p class="alert good">This bill is fully paid.</p>'}
+      <div class="card-head"><h2>Customer payments</h2>${p.balance > 0 ? `<button type="button" class="btn main" data-quick="payment" data-project="${p.id}">+ Add Payment</button>` : ''}</div>
+      ${p.payments.length ? `<div class="scroll"><table class="ledger by-method"><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
+      ${p.balance > 0 ? '' : '<p class="alert good">This bill is fully paid.</p>'}
     </div>
     </section>
     <section ${panel('costs')}>
     <div class="card">
-      <h2>Project costs</h2>
-      <p class="muted" style="margin:-8px 0 10px">Glass, installation, transport and anything else this job costs. Add the total once, and each payment reduces the balance.</p>
+      <div class="card-head"><h2>Project costs</h2><div class="card-actions">${finished ? '' : `<button type="button" class="btn main" data-quick="cost" data-project="${p.id}">+ Add Cost</button>`}${unpaid.length ? `<button type="button" class="btn" data-quick="pay" data-project="${p.id}">+ Pay a Cost</button>` : ''}</div></div>
       ${p.vendorBills.length ? costRows : '<p class="muted">No costs yet.</p>'}
       ${p.vendorBills.length ? `<div class="cost-total"><span>Total ${money(p.vendorCost)}</span><span>Paid ${money(p.vendorPaid)}</span><b>Still to pay ${money(p.vendorDue)}</b></div>` : ''}
-      ${finished ? `<p class="muted" style="margin-bottom:0">Reopen this project to add a late cost.</p>${unpaid.length ? `<div class="add-row"><button type="button" class="btn" data-quick="pay" data-project="${p.id}">+ Pay a Cost</button></div>` : ''}` : `<div class="add-row"><button type="button" class="btn main" data-quick="cost" data-project="${p.id}">+ Add Cost</button>${unpaid.length ? `<button type="button" class="btn" data-quick="pay" data-project="${p.id}">+ Pay a Cost</button>` : ''}</div>`}
+      ${finished ? '<p class="muted" style="margin:10px 0 0">Reopen this project to add a late cost.</p>' : ''}
     </div>
     <div class="card">
       <h2>Payments made</h2>
-      ${p.vendorPayments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid to</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No payments made yet.</p>'}
+      ${p.vendorPayments.length ? `<div class="scroll"><table class="ledger"><tr><th>Date</th><th>Paid to</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No payments made yet.</p>'}
     </div>
     </section>`);
   root.querySelectorAll('[data-tab]').forEach((button) => {
@@ -1643,10 +1660,10 @@ async function accountsPage() {
     </div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Left over this month', money(a.leftOver), true)}
-      ${stat('Money in', money(a.moneyIn))}
-      ${stat('Project costs paid', money(a.vendorPaid))}
-      ${stat('Shop expenses', money(a.expensesTotal))}
+      ${stat('Left over this month', wholeMoney(a.leftOver), true)}
+      ${stat('Money in', wholeMoney(a.moneyIn))}
+      ${stat('Project costs paid', wholeMoney(a.vendorPaid))}
+      ${stat('Shop expenses', wholeMoney(a.expensesTotal))}
     </div>
     <div class="card">
       <div class="split">
@@ -1664,9 +1681,8 @@ async function accountsPage() {
       <p class="muted" style="margin-bottom:0">Money in includes GST collected from customers, so left over is not the same as profit.</p>
     </div>
     <div class="card">
-      <h2>Shop expenses</h2>
-      ${a.expenses.length ? `<div class="scroll"><table><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <div class="add-row"><button type="button" class="btn main" data-quick="expense">+ Add Expense</button></div>
+      <div class="card-head"><h2>Shop expenses</h2><button type="button" class="btn main" data-quick="expense">+ Add Expense</button></div>
+      ${a.expenses.length ? `<div class="scroll"><table class="ledger"><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
     </div>`);
   document.getElementById('month').onchange = (event) => {
     if (!event.target.value) return;
@@ -1685,7 +1701,7 @@ async function investmentPage() {
     <div class="head"><h1>Shop Investment</h1></div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Total invested', money(data.total), true)}
+      ${stat('Total invested', wholeMoney(data.total), true)}
       ${data.byPerson.slice(0, 3).map((p) => stat(p.person, money(p.amount))).join('')}
     </div>
     <div class="card">
@@ -1695,9 +1711,8 @@ async function investmentPage() {
       </div>
     </div>
     <div class="card">
-      <h2>Investment entries</h2>
-      ${data.entries.length ? `<div class="scroll"><table><tr><th>Date</th><th>Who paid</th><th>Paid for</th><th>Paid by</th><th>Note</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
-      <div class="add-row"><button type="button" class="btn main" data-quick="investment">+ Add Investment</button></div>
+      <div class="card-head"><h2>Investment entries</h2><button type="button" class="btn main" data-quick="investment">+ Add Investment</button></div>
+      ${data.entries.length ? `<div class="scroll"><table class="ledger"><tr><th>Date</th><th>Who paid</th><th>Paid for</th><th>Paid by</th><th>Note</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
     </div>`);
   wireMoneyPage(investmentPage);
 }
