@@ -305,3 +305,56 @@ td.loss{color:var(--red);font-weight:700}
 @media (display-mode:standalone){
   body{overscroll-behavior-y:none}
 }
+
+/* Show or hide passwords */
+.password-box{position:relative;display:block}
+.password-box input{padding-right:48px}
+.password-eye{position:absolute;right:3px;top:8px;display:grid;place-items:center;width:42px;height:38px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
+.password-eye svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.password-eye:hover{color:var(--ink)}
+.login .password-eye{color:#c8d0db}
+.login .password-eye:hover{color:#fff}
+.login .login-help{margin:4px 0 0;font-size:13px;color:#a6b0be}
+
+/* Fixes from the full page review */
+.badge{text-transform:none}
+.badge.new,.badge.contacted,.badge.closed{text-transform:capitalize}
+td[data-label="Date"],td[data-label="Sent"],td[data-label="Call on"],td[data-label="Order accepted"],td[data-label="Amount"],td[data-label="Value"],td[data-label="Total"]{white-space:nowrap}
+button.link{padding:9px 4px;margin:-9px 0}
+.lines select{min-width:150px}
+.lines input{min-width:58px}
+#lines th,#lines td{padding-left:5px;padding-right:5px}
+#lines td[data-label="Rate / sq m"] input{min-width:74px}
+#lines td[data-label="Material"]{width:24%}
+@media (max-width:1180px){
+  #lines th{font-size:10px;letter-spacing:.02em}
+  #lines input,#lines select{font-size:14px;padding:7px 5px}
+  .lines select{min-width:120px}
+  .lines input{min-width:50px}
+}
+@media (max-width:860px){
+  .btn.small{min-height:40px;padding:8px 12px}
+  .btn{min-height:44px}
+}
+@media (max-width:640px){
+  .lines select,.lines input{font-size:16px}
+  #lines input,#lines select{font-size:16px;padding:8px}
+  .range{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .range label{min-width:0}
+  .range input{width:100%;padding-left:8px;padding-right:6px}
+  .savebar .acts{flex-wrap:nowrap}
+  .savebar .btn{flex:1 1 0;min-width:0;padding:10px 6px;font-size:13px;white-space:nowrap}
+}
+@media (max-width:359px){
+  .range{grid-template-columns:minmax(0,1fr)}
+  .range .btn{grid-column:auto}
+  .stats{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .savebar .btn{font-size:12px;padding:10px 3px}
+}
+@media (max-width:640px){
+  .scroll td::before{white-space:nowrap;overflow-wrap:normal}
+  .scroll td>select{flex:1 1 100%;width:100%}
+}
+@media (max-width:640px){
+  #lines td[data-label="Material"]{width:100%}
+}

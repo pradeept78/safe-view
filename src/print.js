@@ -35,7 +35,22 @@ const STYLE = `
   .sign{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border:1px solid #000;padding:8px 10px;margin-top:6px;min-height:80px;align-items:end}
   .sign b{display:block}
   .note{font-size:11px;margin-top:6px;display:flex;justify-content:space-between;gap:12px}
-  @media (max-width:600px){.sheet{padding:12px;margin:8px 0}.two,.foot{grid-template-columns:1fr}.foot>div:first-child{border-right:0;border-bottom:1px solid #000}.scroll{overflow-x:auto}table{min-width:620px}}
+  .scroll{max-width:100%}
+  @media (max-width:600px){
+    .sheet{padding:12px;margin:8px 0;overflow:hidden}
+    header{flex-direction:column;gap:8px}
+    header .logo{max-width:100%}
+    header img{height:auto;max-height:40px;max-width:45%}
+    header img:last-child{max-width:calc(100% - 56px)}
+    header div:last-child{min-width:0;max-width:100%;overflow-wrap:anywhere}
+    .two,.foot{grid-template-columns:minmax(0,1fr)}
+    .foot>div:first-child{border-right:0;border-bottom:1px solid #000}
+    .scroll{overflow-x:auto}
+    table{min-width:620px}
+    table.fit{min-width:0}
+    .sign{grid-template-columns:1fr 1fr;row-gap:18px}
+    .note{flex-direction:column;gap:2px}
+  }
   @media print{body{background:#fff}.tools{display:none}.sheet{margin:0;max-width:none;padding:0}@page{size:A4;margin:10mm}}
 `;
 
@@ -81,7 +96,7 @@ function renderExtras(extras) {
     <tr><td>${index + 1}</td><td style="text-align:left">${esc(extra.description)}</td><td>${esc(extra.hsn)}</td><td class="r">${money(extra.amount)}</td></tr>`).join('');
   return `
     <div class="glass"><span>ADDITIONAL CHARGES</span></div>
-    <div class="scroll"><table><tr><th>SR</th><th>Description</th><th>HSN/SAC</th><th>Amount</th></tr>${rows}</table></div>`;
+    <div class="scroll"><table class="fit"><tr><th>SR</th><th>Description</th><th>HSN/SAC</th><th>Amount</th></tr>${rows}</table></div>`;
 }
 
 function renderBill(bill, { invoice = false } = {}) {

@@ -102,6 +102,44 @@ test('the last active admin cannot be turned off or made a partner', async () =>
   assert.equal((await call(admin, 'PUT', `/api/users/${me.id}`, { name: 'Admin', role: 'partner', active: true })).status, 400);
 });
 
+test('the emergency reset gives a working password, restores access and ends sessions', () => {
+  const { checkPassword } = require('../src/db');
+  const { resetPassword } = require('../scripts/reset-password');
+  const db = openDatabase(':memory:');
+  db.prepare("UPDATE users SET active = 0 WHERE username = 'admin'").run();
+  db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ('old', 1, 9999999999999)").run();
+  const password = resetPassword(db, ' Admin ');
+  assert.ok(password.length >= 12);
+  const user = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
+  assert.equal(checkPassword(password, user), true);
+  assert.equal(user.active, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
+  assert.equal(resetPassword(db, 'nobody'), null);
+  db.close();
+});
+
+test('a successful sign-in clears failed attempts, and repeated failures are blocked', async () => {
+  const db = openDatabase(':memory:');
+  const { hash, salt } = hashPassword(PASSWORD);
+  db.prepare('UPDATE users SET pass_hash = ?, salt = ?').run(hash, salt);
+  const limited = await new Promise((resolve) => { const s = createApp(db, { limits: { login: 3, enquiry: 5 } }).listen(0, () => resolve(s)); });
+  const attempt = (password) => fetch(`http://127.0.0.1:${limited.address().port}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password }),
+  }).then((res) => res.status);
+  for (let round = 0; round < 3; round += 1) {
+    assert.equal(await attempt('wrong'), 401);
+    assert.equal(await attempt('wrong'), 401);
+    assert.equal(await attempt(PASSWORD), 200);
+  }
+  assert.equal(await attempt('wrong'), 401);
+  assert.equal(await attempt('wrong'), 401);
+  assert.equal(await attempt('wrong'), 401);
+  assert.equal(await attempt(PASSWORD), 429);
+  limited.close();
+});
+
 test('partners cannot manage users, and a user that does not exist is reported', async () => {
   const admin = await login('admin');
   const partner = await login('partner2');

@@ -194,6 +194,7 @@ function renderLogin() {
         <label>Username<input name="username" autocomplete="username" autocapitalize="none" required></label>
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn main">Sign in</button>
+        <p class="login-help">Forgot your password? Ask your admin to reset it on the Users page.</p>
       </form>
     </div>`;
   document.getElementById('login').onsubmit = async (event) => {
@@ -500,7 +501,7 @@ async function billPage(id) {
     acts.append(button);
   });
   if (bill?.status === 'approved') {
-    acts.insertAdjacentHTML('beforeend', `${bill.quoteStatus === 'won' && !bill.supersededBy ? `<a class="btn" href="#/project/${bill.id}">Order &amp; Payments</a>` : ''}<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
+    acts.insertAdjacentHTML('beforeend', `${bill.quoteStatus === 'won' && !bill.supersededBy ? `<a class="btn" href="#/project/${bill.id}">Payments</a>` : ''}<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
     if (!bill.supersededBy && !bill.invoiceNumber && !bill.openRevisionId && bill.quoteStatus !== 'lost') {
       const reviseButton = document.createElement('button');
       reviseButton.className = 'btn';
@@ -788,6 +789,7 @@ function accountPage() {
       <h2>Change password</h2>
       <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
       <label>New password (at least 8 characters)<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Type the new password again<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
       <p class="acts"><button class="btn main">Change Password</button></p>
     </form>`);
   document.getElementById('name').onsubmit = async (event) => {
@@ -802,9 +804,16 @@ function accountPage() {
   };
   document.getElementById('pass').onsubmit = async (event) => {
     event.preventDefault();
+    const { currentPassword, newPassword, confirmPassword } = Object.fromEntries(new FormData(event.target));
+    if (newPassword !== confirmPassword) {
+      showAlert('msg', 'The two new passwords do not match. Nothing was changed.');
+      window.scrollTo(0, 0);
+      return;
+    }
     try {
-      await api('/api/password', 'POST', Object.fromEntries(new FormData(event.target)));
+      await api('/api/password', 'POST', { currentPassword, newPassword });
       event.target.reset();
+      showAlert('msg', '');
       showAlert('msg', 'Password changed', 'good');
     } catch (error) {
       showAlert('msg', error.message);
@@ -1302,6 +1311,32 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
+// Every password box gets a show/hide button, so nobody is locked out by a typing mistake.
+const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.600-7 10-7 10 7 10 7-3.600 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.600 5.100A10 10 0 0 1 12 5c6.400 0 10 7 10 7a18 18 0 0 1-3.300 4.200M6.500 6.500A17 17 0 0 0 2 12s3.600 7 10 7a10 10 0 0 0 5.500-1.600M9.900 9.900a3 3 0 0 0 4.200 4.200"/></svg>';
+
+function addPasswordToggles() {
+  root.querySelectorAll('input[type=password]:not([data-eye])').forEach((input) => {
+    input.dataset.eye = 'yes';
+    const box = document.createElement('span');
+    box.className = 'password-box';
+    input.replaceWith(box);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'password-eye';
+    button.innerHTML = EYE;
+    button.setAttribute('aria-label', 'Show password');
+    button.onclick = (event) => {
+      event.preventDefault();
+      const hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      button.innerHTML = hidden ? EYE_OFF : EYE;
+      button.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+    };
+    box.append(input, button);
+  });
+}
+
 // On phones each table row becomes a card, and these labels stand in for the hidden column headings.
 function labelTables() {
   root.querySelectorAll('table').forEach((table) => {
@@ -1313,7 +1348,10 @@ function labelTables() {
     });
   });
 }
-new MutationObserver(labelTables).observe(root, { childList: true, subtree: true });
+new MutationObserver(() => {
+  labelTables();
+  addPasswordToggles();
+}).observe(root, { childList: true, subtree: true });
 
 window.addEventListener('hashchange', route);
 api('/api/me').then((user) => { me = user; }).catch(() => {}).finally(route);

@@ -36,6 +36,22 @@ The dashboard can be installed as an app. It needs HTTPS, so use the live site, 
 The app needs the internet. Only design files are kept on the phone, never bills or customer details.
 When sw.js changes, raise its CACHE version so phones replace their saved files.
 
+## If nobody can sign in
+
+On your Mac:
+
+```bash
+node scripts/reset-password.js admin
+```
+
+On the server, from `~/safe-view-docker`:
+
+```bash
+sudo docker compose exec -T app node scripts/reset-password.js admin
+```
+
+It shows a new password once. Sign in and change it under My Account.
+
 ## How billing works
 
 - Anyone signed in can create a draft. Partners send it for approval.
@@ -65,6 +81,17 @@ When sw.js changes, raise its CACHE version so phones replace their saved files.
 ## Going live
 
 Follow [deploy/AWS-SETUP.md](deploy/AWS-SETUP.md). It covers the server, HTTPS, backups and updates.
+
+## Viewing data in MySQL Workbench
+
+The app uses SQLite. To browse a copy in MySQL Workbench, create an import file:
+
+```bash
+node scripts/export-mysql.js
+```
+
+Import `data/safe-view-mysql.sql` in Workbench. It creates a separate `safe_view_copy` database.
+Changes made there do not reach the app. Password hashes and sign-in sessions are left out.
 
 ## Tests
 
