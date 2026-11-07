@@ -121,7 +121,7 @@ function renderBill(bill, { invoice = false } = {}) {
     ? `<div class="replaced">Replaced by ${esc(bill.supersededByNumber)}. This bill is no longer valid.</div>` : '';
 
   return page(invoice ? bill.invoiceNumber : bill.number, `
-    <div class="tools"><button onclick="window.print()">Print</button></div>
+    <div class="tools"><button id="printButton">Print</button></div>
     <div class="sheet">
       <header>
         <div class="logo"><img src="/img/emblem.png" alt=""><img src="/img/word.png" alt="${esc(b.business_name)}"></div>
@@ -165,7 +165,8 @@ function renderBill(bill, { invoice = false } = {}) {
         <div><b>Authorised Signatory</b></div>
       </div>
       <div class="note"><span>${b.jurisdiction ? `Subject to ${esc(b.jurisdiction)} Jurisdiction` : ''}</span><span>Approved ${esc(new Date(bill.approvedAt).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }))}</span></div>
-    </div>`);
+    </div>
+    <script src="/print.js"></script>`);
 }
 
 module.exports = { renderBill, renderMessage };

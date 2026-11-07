@@ -41,6 +41,7 @@ const ICONS = {
   accounts: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
   investment: '<path d="M12 3v18M17 7c-1-2-3-3-5-3-3 0-5 1.500-5 4s2 3.500 5 4 5 1.500 5 4-2 4-5 4c-2 0-4-1-5-3"/>',
   rates: '<path d="M5 3h14v18H5zM12 3v18M5 12h14"/>',
+  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
   users: '<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c.7-4 3.200-6 6.500-6s5.800 2 6.500 6M16 5a3.500 3.500 0 0 1 0 6.500M18 14c2 .8 3.200 2.800 3.500 6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/>',
@@ -49,13 +50,13 @@ const ICONS = {
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
-  const more = [['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users']] : []), ['settings', 'Settings'], ['account', 'My Account']];
+  const more = [['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
   const moreActive = more.some(([hash]) => hash === active);
   root.innerHTML = `
     <div class="layout">
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
-        <nav aria-label="Dashboard">${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
+        <nav aria-label="Dashboard">${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
@@ -88,6 +89,7 @@ function shell(active, content) {
   };
   document.getElementById('logout').onclick = signOut;
   document.getElementById('sheetLogout').onclick = signOut;
+  showEnquiryBadge();
   const installButton = document.getElementById('sheetInstall');
   if (installButton) {
     installButton.onclick = () => {
@@ -693,6 +695,62 @@ async function settingsPage() {
   };
 }
 
+// ----- New enquiry badge -----
+let enquiryCheck = { at: 0, count: 0 };
+
+async function showEnquiryBadge() {
+  if (Date.now() - enquiryCheck.at > 30000) {
+    const list = await api('/api/enquiries').catch(() => null);
+    if (!list) return;
+    enquiryCheck = { at: Date.now(), count: list.filter((e) => e.status === 'new').length };
+  }
+  const { count } = enquiryCheck;
+  root.querySelectorAll('a[href="#/enquiries"], #moreBtn').forEach((item) => {
+    item.querySelector('.count')?.remove();
+    if (!count) return;
+    const dot = document.createElement('span');
+    dot.className = 'count';
+    dot.textContent = count > 9 ? '9+' : String(count);
+    dot.setAttribute('aria-label', `${count} new enquiries`);
+    item.append(dot);
+  });
+}
+
+// ----- Activity log -----
+const activityList = { items: [], total: 0 };
+
+function drawActivity() {
+  const box = document.getElementById('activityResults');
+  if (!box) return;
+  const rows = activityList.items.map((a) => `
+    <tr><td>${esc(when(a.created_at))}</td><td>${esc(a.who)}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`).join('');
+  box.innerHTML = activityList.items.length ? `
+    <table><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th></tr>${rows}</table>
+    <p class="muted list-count">Showing ${activityList.items.length} of ${activityList.total}</p>
+    ${activityList.items.length < activityList.total ? '<button class="btn load-more" id="moreActivity">Load More</button>' : ''}`
+    : '<p class="muted">Nothing recorded yet.</p>';
+  const more = document.getElementById('moreActivity');
+  if (more) {
+    more.onclick = async () => {
+      const next = await api(`/api/activity?offset=${activityList.items.length}`);
+      activityList.items.push(...next.entries);
+      activityList.total = next.total;
+      drawActivity();
+    };
+  }
+}
+
+async function activityPage() {
+  const first = await api('/api/activity');
+  activityList.items = first.entries;
+  activityList.total = first.total;
+  shell('activity', `
+    <div class="head"><h1>Activity</h1></div>
+    <p class="muted" style="margin:-10px 0 14px">Who did what, starting from when this log was added. Passwords are never recorded.</p>
+    <div class="card scroll" id="activityResults"></div>`);
+  drawActivity();
+}
+
 // ----- Users -----
 async function usersPage() {
   const users = await api('/api/users');
@@ -1251,6 +1309,7 @@ async function route() {
     else if (page === 'rates') await ratesPage();
     else if (page === 'settings') await settingsPage();
     else if (page === 'users' && me.role === 'admin') await usersPage();
+    else if (page === 'activity' && me.role === 'admin') await activityPage();
     else if (page === 'account') accountPage();
     else await billsPage();
   } catch (error) {

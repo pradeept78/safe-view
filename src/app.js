@@ -8,6 +8,8 @@ const { registerAccountRoutes } = require('./accounts');
 const { registerQuotationRoutes } = require('./quotations');
 const { registerUserRoutes } = require('./users');
 const { registerBillActions } = require('./bill-actions');
+const { registerActivity } = require('./activity');
+const { createNotifier } = require('./notify');
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = 'sv_session';
@@ -44,7 +46,22 @@ function readCookie(req) {
   return match ? match[1] : null;
 }
 
-function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
+const CONTENT_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: https://images.unsplash.com",
+  "connect-src 'self'",
+  "manifest-src 'self'",
+  "worker-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNotifier() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   // Only Caddy may say who the real visitor is. Without this, every visitor looks like one person
@@ -54,7 +71,9 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');
     res.set('X-Frame-Options', 'DENY');
-    res.set('Referrer-Policy', 'same-origin');
+    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.set('Content-Security-Policy', CONTENT_POLICY);
+    res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
     next();
   });
 
@@ -203,6 +222,8 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     res.json({ ok: true });
   });
 
+  const logActivity = registerActivity(app, { db, requireLogin, requireAdmin, now });
+
   // ----- Public website -----
   app.get('/api/public', (req, res) => {
     const settings = getSettings();
@@ -215,8 +236,12 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     const phone = text(req.body.phone, 30);
     if (!name) throw new Problem(400, 'Please enter your name');
     if (!/^[+\d][\d\s-]{6,}$/.test(phone)) throw new Problem(400, 'Please enter a valid phone number');
+    const service = text(req.body.service, 80);
+    const message = text(req.body.message, 2000);
     db.prepare('INSERT INTO enquiries (name, phone, service, message, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(name, phone, text(req.body.service, 80), text(req.body.message, 2000), now());
+      .run(name, phone, service, message, now());
+    Promise.resolve(notify({ name, phone, service, message }))
+      .catch((error) => console.error('Enquiry alert failed:', error.message));
     res.status(201).json({ ok: true });
   });
 
@@ -226,6 +251,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(text(req.body.username, 60).toLowerCase());
     if (!user || !user.active || !checkPassword(String(req.body.password ?? ''), user)) throw new Problem(401, 'Wrong username or password');
     loginLimit.clear(req.ip); // only wrong passwords should count toward the limit
+    logActivity(user.name, 'Signed in');
     const token = crypto.randomBytes(32).toString('hex');
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(sha256(token), user.id, Date.now() + SESSION_MS);
