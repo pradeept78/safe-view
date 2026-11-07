@@ -1205,7 +1205,8 @@ async function projectPage(id) {
 }
 
 // ----- Monthly accounts -----
-const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Electricity', 'Transport', 'Tools', 'Marketing', 'Other'];
+const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Electricity', 'Transport', 'Tools', 'Marketing'];
+const OTHER_CATEGORY = '__other__';
 let chosenMonth = new Date().toLocaleDateString('en-CA').slice(0, 7);
 
 async function accountsPage() {
@@ -1244,8 +1245,12 @@ async function accountsPage() {
       ${a.expenses.length ? `<div class="scroll"><table><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
       <details class="adder" ${addOpen()}><summary>+ Add Expense</summary><form class="entry" data-post="/api/expenses">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
-        <label>Category<input name="category" list="categories" maxlength="60" required></label>
-        <datalist id="categories">${EXPENSE_CATEGORIES.map((c) => `<option value="${c}">`).join('')}</datalist>
+        <label>Category<select name="category" id="categoryPick" required>
+          <option value="">Choose a category</option>
+          ${EXPENSE_CATEGORIES.map((c) => `<option>${c}</option>`).join('')}
+          <option value="${OTHER_CATEGORY}">Other (type your own)</option>
+        </select></label>
+        <label id="categoryOther" hidden>Your category<input id="categoryText" maxlength="60"></label>
         <label>Details<input name="description" maxlength="200"></label>
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
@@ -1256,6 +1261,18 @@ async function accountsPage() {
     if (!event.target.value) return;
     chosenMonth = event.target.value;
     accountsPage();
+  };
+  // "Other" swaps the dropdown for a typed category, so only one value is sent.
+  const categoryPick = document.getElementById('categoryPick');
+  const categoryOther = document.getElementById('categoryOther');
+  const categoryText = document.getElementById('categoryText');
+  categoryPick.onchange = () => {
+    const typing = categoryPick.value === OTHER_CATEGORY;
+    categoryOther.hidden = !typing;
+    categoryText.required = typing;
+    categoryText.name = typing ? 'category' : '';
+    categoryPick.name = typing ? '' : 'category';
+    if (typing) categoryText.focus();
   };
   wireMoneyPage(accountsPage);
 }
@@ -1284,8 +1301,7 @@ async function investmentPage() {
       <details class="adder" ${addOpen()}><summary>+ Add Investment</summary><form class="entry" data-post="/api/investments">
         <label>Date<input type="date" name="date" value="${today()}" required></label>
         <label>Who paid<select name="person" required>${data.people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>
-        <label>Paid for<input name="paidFor" maxlength="200" list="purposes" required></label>
-        <datalist id="purposes">${data.byPurpose.map((p) => `<option value="${esc(p.paidFor)}">`).join('')}</datalist>
+        <label>Paid for<input name="paidFor" maxlength="200" placeholder="Like: cutting machine" required></label>
         <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
         ${methodSelect}
         <label>Note<input name="note" maxlength="300"></label>
