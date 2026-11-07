@@ -97,7 +97,7 @@ function shell(active, content) {
     renderLogin();
   };
   document.getElementById('quickAdd').onclick = () => openQuickAdd();
-  const flipTheme = () => switchTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  const flipTheme = () => window.setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   document.getElementById('themeBtn').onclick = flipTheme;
   document.getElementById('sheetTheme').onclick = flipTheme;
   document.getElementById('logout').onclick = signOut;
@@ -940,75 +940,97 @@ async function usersPage() {
 }
 
 // ----- My account -----
-const currentTheme = () => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
-
-// The sidebar switch and My Account both change the theme, so keep them showing the same thing.
-function switchTheme(theme) {
-  window.setTheme(theme);
-  document.querySelectorAll('#themePick button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.value === theme)));
+// A small form in a popup. A mistake shows inside the popup, so it stays open and in view.
+function openFormPopup({ title, fields, note, saveLabel, onSave }) {
+  const returnFocus = document.activeElement;
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay quick-overlay';
+  overlay.innerHTML = `<form class="dialog quick" role="dialog" aria-modal="true" aria-labelledby="popupTitle" novalidate>
+    <div class="quick-head"><h2 id="popupTitle">${esc(title)}</h2><button type="button" class="quick-close" aria-label="Close">×</button></div>
+    <div class="popup-fields">${fields}</div>
+    ${note ? `<p class="muted popup-note">${esc(note)}</p>` : ''}
+    <p class="dialog-error" id="popupError" role="alert"></p>
+    <div class="dialog-actions quick-foot"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn main">${esc(saveLabel)}</button></div>
+  </form>`;
+  document.body.append(overlay);
+  addPasswordToggles(overlay);
+  const form = overlay.querySelector('form');
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    returnFocus?.focus?.();
+  };
+  function onKey(event) {
+    if (event.key === 'Escape') close();
+    if (event.key !== 'Tab') return;
+    const items = [...form.querySelectorAll('button, input')].filter((item) => item.offsetParent);
+    const edge = event.shiftKey ? items[0] : items[items.length - 1];
+    if (document.activeElement === edge) {
+      event.preventDefault();
+      (event.shiftKey ? items[items.length - 1] : items[0]).focus();
+    }
+  }
+  document.addEventListener('keydown', onKey);
+  overlay.onclick = (event) => { if (event.target === overlay) close(); };
+  form.querySelector('.quick-close').onclick = close;
+  form.querySelector('[data-cancel]').onclick = close;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const save = form.querySelector('.btn.main');
+    save.disabled = true;
+    try {
+      await onSave(Object.fromEntries(new FormData(form)));
+      close();
+    } catch (error) {
+      form.querySelector('#popupError').textContent = error.message;
+      save.disabled = false;
+    }
+  };
+  form.querySelector('input').focus();
 }
 
 function accountPage() {
   shell('account', `
     <div class="head"><h1>My Account</h1></div>
     <div id="msg"></div>
-    <div class="card stack">
-      <h2>Sign in</h2>
-      <div class="totals plain">
-        <div><span>Username</span><span>${esc(me.username)}</span></div>
-        <div><span>Role</span><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
+    <div class="card profile-card">
+      <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
+      <div class="profile-who">
+        <div class="profile-name">
+          <h2>${esc(me.name)}</h2>
+          <button type="button" class="icon-btn" id="editName" aria-label="Edit name" title="Edit name"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.800 2.800 0 0 0-4-4L4 16zM13.500 6.500l4 4"/></svg></button>
+        </div>
+        <p class="muted">Signs in as <b>${esc(me.username)}</b></p>
       </div>
-      <p class="muted" style="margin:0">${me.role === 'admin' ? 'You can change usernames on the Users page.' : 'Ask your admin if your username needs to change.'}</p>
-    </div>
-    <form class="card stack" id="name">
-      <h2>Name printed on bills</h2>
-      <label>Your name<input name="name" value="${esc(me.name)}" maxlength="80" required></label>
-      <p class="acts"><button class="btn">Save Name</button></p>
-    </form>
-    <div class="card stack">
-      <h2>Theme</h2>
-      <p class="muted" style="margin:0">Saved on this device only.</p>
-      ${chips('themePick', 'Theme', [['dark', 'Dark'], ['light', 'Light']], currentTheme())}
-    </div>
-    <form class="card stack" id="pass">
-      <h2>Change password</h2>
-      <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
-      <label>New password (at least 8 characters)<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label>
-      <label>Type the new password again<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label>
-      <p class="muted" style="margin:0">Changing it signs you out on your other devices.</p>
-      <p class="acts"><button class="btn main">Change Password</button></p>
-    </form>`);
-  wireChips('themePick', switchTheme);
-  const fail = (message) => {
-    showAlert('msg', message);
-    window.scrollTo(0, 0);
-  };
-  document.getElementById('name').onsubmit = async (event) => {
-    event.preventDefault();
-    try {
-      me = await api('/api/me', 'PUT', Object.fromEntries(new FormData(event.target)));
+      <span class="badge ${me.role === 'admin' ? 'approved' : 'contacted'}">${me.role === 'admin' ? 'Admin' : 'Partner'}</span>
+      <div class="profile-foot">
+        <button type="button" class="btn" id="changePassword">Change Password</button>
+        <p class="muted">${me.role === 'admin' ? 'To change a username, go to <a href="#/users">Users</a>.' : 'Only your admin can change your username.'}</p>
+      </div>
+    </div>`);
+  document.getElementById('editName').onclick = () => openFormPopup({
+    title: 'Edit name',
+    fields: `<label>Name printed on bills<input name="name" value="${esc(me.name)}" maxlength="80" autocomplete="name"></label>`,
+    saveLabel: 'Save Name',
+    onSave: async (body) => {
+      me = await api('/api/me', 'PUT', body);
       accountPage();
-      showAlert('msg', 'Name saved', 'good');
-    } catch (error) {
-      fail(error.message);
-    }
-  };
-  document.getElementById('pass').onsubmit = async (event) => {
-    event.preventDefault();
-    const { currentPassword, newPassword, confirmPassword } = Object.fromEntries(new FormData(event.target));
-    if (newPassword !== confirmPassword) {
-      fail('The two new passwords do not match. Nothing was changed.');
-      return;
-    }
-    try {
+      showToast('Name saved');
+    },
+  });
+  document.getElementById('changePassword').onclick = () => openFormPopup({
+    title: 'Change password',
+    fields: `<label>Current password<input name="currentPassword" type="password" autocomplete="current-password"></label>
+      <label>New password (at least 8 characters)<input name="newPassword" type="password" autocomplete="new-password"></label>
+      <label>Type the new password again<input name="confirmPassword" type="password" autocomplete="new-password"></label>`,
+    note: 'This signs you out on your other devices.',
+    saveLabel: 'Change Password',
+    onSave: async ({ currentPassword, newPassword, confirmPassword }) => {
+      if (newPassword !== confirmPassword) throw new Error('The two new passwords do not match. Nothing was changed.');
       await api('/api/password', 'POST', { currentPassword, newPassword });
-      event.target.reset();
-      showAlert('msg', '');
-      showAlert('msg', 'Password changed', 'good');
-    } catch (error) {
-      fail(error.message);
-    }
-  };
+      showToast('Password changed');
+    },
+  });
 }
 
 // ----- Customer decision on an approved bill -----
@@ -1941,8 +1963,8 @@ if ('serviceWorker' in navigator) {
 const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.600-7 10-7 10 7 10 7-3.600 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.600 5.100A10 10 0 0 1 12 5c6.400 0 10 7 10 7a18 18 0 0 1-3.300 4.200M6.500 6.500A17 17 0 0 0 2 12s3.600 7 10 7a10 10 0 0 0 5.500-1.600M9.900 9.900a3 3 0 0 0 4.200 4.200"/></svg>';
 
-function addPasswordToggles() {
-  root.querySelectorAll('input[type=password]:not([data-eye])').forEach((input) => {
+function addPasswordToggles(scope = root) {
+  scope.querySelectorAll('input[type=password]:not([data-eye])').forEach((input) => {
     input.dataset.eye = 'yes';
     const box = document.createElement('span');
     box.className = 'password-box';
