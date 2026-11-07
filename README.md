@@ -26,6 +26,16 @@ The first start creates three logins (`admin`, `partner2`, `partner3`) and saves
 The admin adds people, edits names and roles, resets passwords and turns off access on the Users page.
 Users are turned off rather than deleted, because their names stay on past bills.
 
+## Installing on a phone
+
+The dashboard can be installed as an app. It needs HTTPS, so use the live site, not the Wi-Fi address.
+
+- Android, in Chrome: open the dashboard, then More, then Install App.
+- iPhone, in Safari: tap Share, then Add to Home Screen.
+
+The app needs the internet. Only design files are kept on the phone, never bills or customer details.
+When sw.js changes, raise its CACHE version so phones replace their saved files.
+
 ## How billing works
 
 - Anyone signed in can create a draft. Partners send it for approval.
@@ -33,6 +43,14 @@ Users are turned off rather than deleted, because their names stay on past bills
 - The bill number is given at approval, so numbers never skip.
 - Approved bills are locked and keep the business details they were approved with.
 - Only approved bills can be printed.
+
+## Correcting bills and tax invoices
+
+- Revise Bill makes an editable copy of an approved bill. The old bill stays valid until the copy is approved.
+- When it is approved, the order, payments and vendor costs move to the new bill. A bill can be revised as often as needed.
+- Old versions leave the normal lists. They show under the Revised filter and in each bill's version history.
+- The admin creates a tax invoice from a won order. Numbers look like SV/26-27/00001 and restart each financial year.
+- A tax invoice locks the order. Have your accountant confirm the format before using it.
 
 ## How money tracking works
 

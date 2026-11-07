@@ -7,6 +7,7 @@ const { renderBill, renderMessage } = require('./print');
 const { registerAccountRoutes } = require('./accounts');
 const { registerQuotationRoutes } = require('./quotations');
 const { registerUserRoutes } = require('./users');
+const { registerBillActions } = require('./bill-actions');
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = 'sv_session';
@@ -77,6 +78,28 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     next();
   };
 
+  const billNumber = (id) => (id ? db.prepare('SELECT number FROM bills WHERE id = ?').get(id)?.number ?? null : null);
+
+  // Every approved version of this bill, oldest first.
+  function billHistory(row) {
+    const versions = [];
+    let current = row;
+    while (current.revises_id) {
+      current = db.prepare('SELECT id, number, revises_id FROM bills WHERE id = ?').get(current.revises_id);
+      if (!current) break;
+      versions.unshift({ id: current.id, number: current.number });
+    }
+    let next = row.superseded_by;
+    if (row.number) versions.push({ id: row.id, number: row.number, current: true });
+    while (next) {
+      const later = db.prepare('SELECT id, number, superseded_by FROM bills WHERE id = ?').get(next);
+      if (!later) break;
+      versions.push({ id: later.id, number: later.number });
+      next = later.superseded_by;
+    }
+    return versions;
+  }
+
   function presentBill(row) {
     return {
       id: row.id,
@@ -106,6 +129,16 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
       lostNote: row.lost_note,
       followUpOn: row.follow_up_on,
       acceptedOn: row.order_accepted_on,
+      revisesId: row.revises_id,
+      revisesNumber: billNumber(row.revises_id),
+      supersededBy: row.superseded_by,
+      supersededByNumber: billNumber(row.superseded_by),
+      openRevisionId: db.prepare("SELECT id FROM bills WHERE revises_id = ? AND status <> 'approved'").get(row.id)?.id ?? null,
+      history: billHistory(row),
+      invoiceNumber: row.invoice_number,
+      invoiceDate: row.invoice_date,
+      invoiceStateCode: row.invoice_state_code,
+      invoiceBusiness: row.invoice_business_json ? JSON.parse(row.invoice_business_json) : null,
     };
   }
 
@@ -232,9 +265,42 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     }
   });
 
+  const BILL_FILTERS = {
+    all: 'superseded_by IS NULL',
+    draft: "status = 'draft'",
+    pending: "status = 'pending'",
+    waiting: "status = 'approved' AND quote_status = 'waiting' AND superseded_by IS NULL",
+    won: "status = 'approved' AND quote_status = 'won' AND superseded_by IS NULL",
+    lost: "status = 'approved' AND quote_status = 'lost' AND superseded_by IS NULL",
+    revised: 'superseded_by IS NOT NULL',
+  };
+
+  function billStats() {
+    const count = (filter) => db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE ${filter}`).get().n;
+    const month = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7);
+    const approved = db.prepare("SELECT totals_json FROM bills WHERE status = 'approved' AND superseded_by IS NULL AND approved_at LIKE ?").all(`${month}-%`);
+    return {
+      drafts: count(BILL_FILTERS.draft),
+      waiting: count(BILL_FILTERS.pending),
+      approvedThisMonth: approved.reduce((total, row) => total + (JSON.parse(row.totals_json).grandTotal || 0), 0),
+    };
+  }
+
   app.get('/api/bills', requireLogin, (req, res) => {
-    const rows = db.prepare('SELECT * FROM bills ORDER BY id DESC LIMIT 500').all();
-    res.json(rows.map(presentBill));
+    const status = String(req.query.status || 'all');
+    if (!BILL_FILTERS[status]) throw new Problem(400, 'Unknown status');
+    const limit = Math.min(Math.max(Number(req.query.limit) || 30, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const search = text(req.query.q, 80);
+    const like = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+    const where = `${BILL_FILTERS[status]} AND (? = '' OR customer_name LIKE ? ESCAPE '\\' OR customer_phone LIKE ? ESCAPE '\\'
+      OR number LIKE ? ESCAPE '\\' OR invoice_number LIKE ? ESCAPE '\\')`;
+    const params = [search, like, like, like, like];
+    res.json({
+      bills: db.prepare(`SELECT * FROM bills WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset).map(presentBill),
+      total: db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE ${where}`).get(...params).n,
+      stats: billStats(),
+    });
   });
 
   app.get('/api/bills/:id', requireLogin, (req, res) => res.json(presentBill(findBill(req.params.id))));
@@ -290,6 +356,9 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   const approveBill = db.transaction((id, adminId) => {
     const row = findBill(id);
     if (row.status === 'approved') throw new Problem(409, 'This bill is already approved');
+    const original = row.revises_id ? findBill(row.revises_id) : null;
+    if (original?.invoice_number) throw new Problem(409, 'The original bill now has a tax invoice, so this revision cannot be approved');
+    if (original?.superseded_by) throw new Problem(409, 'The original bill has already been replaced');
     const settings = getSettings();
     const next = Number(settings.next_bill_number);
     const time = now();
@@ -298,6 +367,14 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
         approved_at = ?, updated_at = ? WHERE id = ?
     `).run(`PI/${String(next).padStart(5, '0')}`, adminId, JSON.stringify(settings), time, time, row.id);
     db.prepare("UPDATE settings SET value = ? WHERE key = 'next_bill_number'").run(String(next + 1));
+    if (original) {
+      // The corrected bill takes over the order, so payments and costs follow it.
+      db.prepare('UPDATE bills SET quote_status = ?, order_accepted_on = ?, follow_up_on = ? WHERE id = ?')
+        .run(original.quote_status, original.order_accepted_on, original.follow_up_on, row.id);
+      db.prepare('UPDATE payments SET bill_id = ? WHERE bill_id = ?').run(row.id, original.id);
+      db.prepare('UPDATE vendor_payments SET bill_id = ? WHERE bill_id = ?').run(row.id, original.id);
+      db.prepare('UPDATE bills SET superseded_by = ?, follow_up_on = NULL WHERE id = ?').run(row.id, original.id);
+    }
   });
 
   app.post('/api/bills/:id/approve', requireLogin, requireAdmin, (req, res) => {
@@ -311,6 +388,13 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
     if (!row) return res.status(404).send(renderMessage('Bill not found.'));
     if (row.status !== 'approved') return res.status(403).send(renderMessage('This bill cannot be printed until the admin approves it.'));
     res.send(renderBill(presentBill(row)));
+  });
+
+  app.get('/print/:id/tax-invoice', (req, res) => {
+    if (!currentUser(req)) return res.status(401).send(renderMessage('Please sign in to the dashboard first.'));
+    const row = db.prepare('SELECT * FROM bills WHERE id = ?').get(Number(req.params.id));
+    if (!row?.invoice_number) return res.status(404).send(renderMessage('This order does not have a tax invoice yet.'));
+    res.send(renderBill(presentBill(row), { invoice: true }));
   });
 
   // ----- Settings and glass rates -----
@@ -380,6 +464,7 @@ function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, text, now });
   registerQuotationRoutes(app, { db, requireLogin, Problem, text });
   registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text });
+  registerBillActions(app, { db, requireLogin, requireAdmin, Problem, text, now, presentBill, getSettings });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
   app.use(express.static(path.join(__dirname, '..', 'public')));

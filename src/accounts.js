@@ -26,7 +26,7 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
   }
 
   function findProject(id) {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'approved' AND quote_status = 'won'").get(Number(id));
+    const bill = db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'approved' AND quote_status = 'won' AND superseded_by IS NULL").get(Number(id));
     if (!bill) throw new Problem(404, 'Project not found. A quotation becomes a project once it is won.');
     return bill;
   }
@@ -67,7 +67,7 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
   }
 
   app.get('/api/projects', requireLogin, (req, res) => {
-    const bills = db.prepare("SELECT * FROM bills WHERE status = 'approved' AND quote_status = 'won' ORDER BY id DESC LIMIT 500").all();
+    const bills = db.prepare("SELECT * FROM bills WHERE status = 'approved' AND quote_status = 'won' AND superseded_by IS NULL ORDER BY id DESC").all();
     res.json(bills.map((bill) => {
       const { payments, vendorPayments, ...summary } = summarise(bill);
       return summary;

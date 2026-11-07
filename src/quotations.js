@@ -18,7 +18,7 @@ const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 function registerQuotationRoutes(app, { db, requireLogin, Problem, text }) {
   function findQuotation(id) {
-    const bill = db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'approved'").get(Number(id));
+    const bill = db.prepare("SELECT * FROM bills WHERE id = ? AND status = 'approved' AND superseded_by IS NULL").get(Number(id));
     if (!bill) throw new Problem(404, 'Quotation not found. Only approved bills can be sent to customers.');
     return bill;
   }
@@ -53,6 +53,7 @@ function registerQuotationRoutes(app, { db, requireLogin, Problem, text }) {
 
   app.put('/api/quotations/:id/reopen', requireLogin, (req, res) => {
     const bill = findQuotation(req.params.id);
+    if (bill.invoice_number) throw new Problem(409, 'A tax invoice has been issued, so this order cannot be reopened');
     const count = (table) => db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE bill_id = ?`).get(bill.id).n;
     if (count('payments') || count('vendor_payments')) {
       throw new Problem(409, 'This project has payments recorded. Ask the admin to delete them before reopening it.');
@@ -75,7 +76,7 @@ function registerQuotationRoutes(app, { db, requireLogin, Problem, text }) {
     const from = readDate(req.query.from, 'Choose a start date');
     const to = readDate(req.query.to, 'Choose an end date');
 
-    const approved = db.prepare("SELECT * FROM bills WHERE status = 'approved' ORDER BY id DESC").all().map((bill) => ({
+    const approved = db.prepare("SELECT * FROM bills WHERE status = 'approved' AND superseded_by IS NULL ORDER BY id DESC").all().map((bill) => ({
       id: bill.id,
       number: bill.number,
       customerName: bill.customer_name,
