@@ -1,8 +1,0 @@
-__DOMAIN__, www.__DOMAIN__ {
-	@www host www.__DOMAIN__
-	redir @www https://__DOMAIN__{uri} permanent
-
-	encode gzip
-	header Strict-Transport-Security "max-age=31536000"
-	reverse_proxy 127.0.0.1:4310
-}

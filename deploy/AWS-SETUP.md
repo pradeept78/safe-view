@@ -1,119 +1,119 @@
-# Put Safe View on AWS
+# Run Safe View on AWS with Docker
 
-This puts the website and dashboard on one AWS Lightsail server with HTTPS and nightly backups.
-Set aside about an hour. Domain changes can take longer to reach everyone.
+The server pulls the code from GitHub and runs it in two containers: the app, and Caddy for HTTPS.
+All data stays in `/var/lib/safe-view` on the server, outside the containers.
 
 ## What you need first
 
-- An AWS account with a payment method.
-- A domain name you own, like `yourdomain.in`. HTTPS and sign-in will not work on a bare IP address.
+- A Lightsail server running Ubuntu 24.04, with ports 22, 80 and 443 open and a static IP.
+- Automatic snapshots turned on, so you are protected if the whole server is lost.
+- A domain pointing at the static IP. Sign-in needs HTTPS, so a bare IP address will not work.
 
-## 1. Create the server
-
-1. Open the Lightsail console and choose **Create instance**.
-2. Region: **Mumbai (ap-south-1)**.
-3. Platform: **Linux/Unix**. Blueprint: **OS Only**, then **Ubuntu 24.04 LTS**.
-4. Download the SSH key when offered and keep it safe. Anyone with this file can get into the server.
-5. Plan: choose one with at least **1 GB** memory. Check the price shown before creating it.
-6. Name it `safe-view` and choose **Create instance**.
-
-## 2. Give it a fixed address and open the ports
-
-1. Go to **Networking** and create a **static IP** attached to `safe-view`. Note this address.
-2. On the instance's **Networking** tab, keep **SSH (22)** and **HTTP (80)**, and add **HTTPS (443)**.
-3. Do not open port 4310.
-
-## 3. Turn on automatic snapshots
-
-On the instance's **Snapshots** tab, turn on **Automatic snapshots**. Snapshots are stored apart from
-the server, so they protect you if the whole server is lost. They have a small extra cost.
-
-## 4. Point your domain at the server
-
-At your domain company, add these DNS records, using your static IP:
-
-| Type | Name | Value |
-|------|------|-------|
-| A | `@` | your static IP |
-| A | `www` | your static IP |
-
-Wait until the check below shows your static IP:
-
-```bash
-dig +short yourdomain.in
-```
-
-## 5. Upload the app
-
-On your Mac, from the `safe-view` folder:
-
-```bash
-bash deploy/upload.sh ~/Downloads/YOUR-KEY.pem YOUR_STATIC_IP
-```
-
-## 6. Install it
+## First-time setup
 
 Connect to the server:
 
 ```bash
-ssh -i ~/Downloads/YOUR-KEY.pem ubuntu@YOUR_STATIC_IP
+ssh -i ~/Downloads/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.34.182
 ```
 
-Then, on the server:
+### 1. Create a key so the server can read GitHub
 
 ```bash
-cd ~/safe-view && sudo bash deploy/setup-server.sh yourdomain.in
+ssh-keygen -t ed25519 -f ~/.ssh/github_safe_view -N "" -C safe-view-server
 ```
 
-Show your three first logins:
+```bash
+cat ~/.ssh/github_safe_view.pub
+```
+
+Copy the line it prints. This is the public half, so it is safe to paste into GitHub.
+
+### 2. Add the key to GitHub
+
+1. Open https://github.com/pradeept78/safe-view/settings/keys
+2. Choose **Add deploy key**.
+3. Title: `safe-view-server`. Paste the line into **Key**.
+4. Leave **Allow write access** off, so the server can only read.
+5. Choose **Add key**.
+
+### 3. Download the code
+
+```bash
+git clone -c core.sshCommand="ssh -i ~/.ssh/github_safe_view -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git@github.com:pradeept78/safe-view.git ~/safe-view-docker
+```
+
+### 4. Install and start
+
+Use your domain. If an older install is running, this backs it up, stops it and keeps its data.
+
+```bash
+cd ~/safe-view-docker && sudo bash deploy/docker-setup.sh yourdomain.in
+```
+
+### 5. Check it
+
+```bash
+sudo docker compose ps
+```
+
+Both containers should show as running, and the app as healthy. Then open your site and check for the padlock.
+
+On a brand new server, the first logins are here. Change each password under My Account, then delete the file.
 
 ```bash
 sudo cat /var/lib/safe-view/first-login.txt
 ```
 
-## 7. Finish setting up
-
-1. Open `https://yourdomain.in/` and check for the padlock.
-2. Sign in at `https://yourdomain.in/admin/` with each login and change its password under My Account.
-3. Delete the logins file on the server:
-
 ```bash
 sudo rm /var/lib/safe-view/first-login.txt
 ```
 
-4. As admin, fill in **Settings** and **Materials & Rates**.
-5. Send a test enquiry and make one test bill.
+## Getting the latest code
 
-The server starts with an empty database. Nothing from your Mac is copied across.
-
-## Updating the app later
-
-Upload again with step 5, then on the server:
+On your Mac, commit and push to `main`. Then on the server:
 
 ```bash
-cd ~/safe-view && sudo bash deploy/update-server.sh
+cd ~/safe-view-docker && sudo bash deploy/docker-update.sh
 ```
 
-The update takes a backup first and keeps all your data.
+This takes a backup, pulls the code, rebuilds and restarts. Your data is kept.
+The site is briefly unavailable while it restarts.
+
+## Changing the domain
+
+Run the install step again with the new domain. It keeps your data.
+
+```bash
+cd ~/safe-view-docker && sudo bash deploy/docker-setup.sh safeviewglasssolutions.in
+```
 
 ## Useful checks
 
-Is the app running?
+Run these from `~/safe-view-docker`.
+
+See the containers:
 
 ```bash
-sudo systemctl status safe-view
+sudo docker compose ps
 ```
 
-Show recent errors:
+Show recent app errors:
 
 ```bash
-sudo journalctl -u safe-view -n 50
+sudo docker compose logs --tail 50 app
+```
+
+Show HTTPS problems:
+
+```bash
+sudo docker compose logs --tail 50 caddy
 ```
 
 Run a backup now:
 
 ```bash
-sudo systemctl start safe-view-backup.service
+sudo docker compose exec -T app node scripts/backup.js
 ```
 
 List backups:
@@ -122,12 +122,14 @@ List backups:
 sudo ls -lh /var/lib/safe-view/backups
 ```
 
+Backups run every night at 02:30 India time and are kept for 14 days.
+
 ## Restoring a backup
 
 Replace the date with the backup you want. This replaces all current data, so only do it when you are sure.
 
 ```bash
-sudo systemctl stop safe-view
+sudo docker compose stop app
 ```
 
 ```bash
@@ -139,9 +141,9 @@ sudo rm -f /var/lib/safe-view/safe-view.db-wal /var/lib/safe-view/safe-view.db-s
 ```
 
 ```bash
-sudo chown safeview:safeview /var/lib/safe-view/safe-view.db
+sudo chown 1000:1000 /var/lib/safe-view/safe-view.db
 ```
 
 ```bash
-sudo systemctl start safe-view
+sudo docker compose start app
 ```

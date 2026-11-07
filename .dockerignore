@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+*.pem
+.first-login.txt
+node_modules
+data
+backups
+tests
+deploy
+*.md
