@@ -153,3 +153,31 @@ td.loss{color:var(--red);font-weight:700}
 @media (max-width:640px){.scroll th,.scroll td{white-space:nowrap}.scroll td .muted{white-space:normal;min-width:160px}}
 .check{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
 .check input{width:auto;margin:0}
+
+/* Phones: tables become cards, so nobody has to swipe sideways while typing sizes. */
+@media (max-width:640px){
+  input,select,textarea{font-size:16px}
+  .scroll{overflow:visible}
+  .scroll table,.scroll tbody,.scroll tr,.scroll td{display:block;width:100%}
+  .scroll table{min-width:0}
+  .scroll tr:has(> th){display:none}
+  .scroll tr{border:1px solid var(--line);border-radius:12px;padding:6px 12px;margin-bottom:10px;background:#fff}
+  .scroll tr:last-child td,.scroll td{border-bottom:0}
+  .scroll td,.scroll td.n{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;padding:7px 0;text-align:right;white-space:normal;overflow-wrap:anywhere}
+  .scroll td::before{content:attr(data-label);flex:0 0 auto;max-width:45%;font-size:12px;font-weight:700;color:var(--muted);text-align:left}
+  .scroll td[data-label=""]::before{display:none}
+  .scroll td[data-label=""]{justify-content:flex-end}
+  .scroll td:empty{display:none}
+  .scroll td>input,.scroll td>select,.scroll td>.check{flex:1 1 55%;min-width:0!important;width:auto;margin:0}
+  .scroll td>input[type=number]{text-align:right}
+  .scroll td>select{text-align:left}
+  .scroll td .hint{flex:1 0 100%;white-space:normal;text-align:right}
+  .scroll td .muted{flex:1 0 100%;min-width:0;text-align:right}
+  .scroll tr.link{cursor:pointer}
+  tr.sub{background:#fbf8ef;margin-top:-6px}
+  tr.sub td{display:block;background:none;padding:6px 0}
+  tr.sub td::before{display:none}
+  .sub-grid{grid-template-columns:1fr}
+  .sub-grid input{text-align:left}
+  .btn.small{padding:8px 12px}
+}

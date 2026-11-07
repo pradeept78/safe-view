@@ -1003,5 +1003,18 @@ async function route() {
   }
 }
 
+// On phones each table row becomes a card, and these labels stand in for the hidden column headings.
+function labelTables() {
+  root.querySelectorAll('table').forEach((table) => {
+    const headings = [...table.querySelectorAll('tr:first-child th')].map((th) => th.textContent.trim());
+    table.querySelectorAll('tr').forEach((row) => {
+      [...row.children].forEach((cell, index) => {
+        if (cell.tagName === 'TD' && cell.colSpan === 1) cell.dataset.label = headings[index] || '';
+      });
+    });
+  });
+}
+new MutationObserver(labelTables).observe(root, { childList: true, subtree: true });
+
 window.addEventListener('hashchange', route);
 api('/api/me').then((user) => { me = user; }).catch(() => {}).finally(route);
