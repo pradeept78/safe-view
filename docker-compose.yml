@@ -1,0 +1,36 @@
+# Only Caddy is reachable from outside (80, 443). The app has no published port.
+services:
+  app:
+    build: .
+    container_name: safe-view-app
+    restart: unless-stopped
+    volumes:
+      - ${DATA_DIR:-/var/lib/safe-view}:/data
+    networks:
+      - safe-view-net
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: safe-view-caddy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - safe-view-net
+
+networks:
+  safe-view-net:
+
+volumes:
+  caddy_data:
+  caddy_config:

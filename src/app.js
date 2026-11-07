@@ -41,9 +41,9 @@ function readCookie(req) {
 function createApp(db, { limits = { login: 10, enquiry: 5 } } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  // Caddy runs on the same server, so only it may say who the real visitor is. Without this,
-  // every visitor looks like one person and the limits below would lock everyone out together.
-  app.set('trust proxy', 'loopback');
+  // Only Caddy may say who the real visitor is. Without this, every visitor looks like one person
+  // and the limits below would lock everyone out together. In Docker it sits on a private network.
+  app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
   app.use(express.json({ limit: '200kb' }));
   app.use((req, res, next) => {
     res.set('X-Content-Type-Options', 'nosniff');

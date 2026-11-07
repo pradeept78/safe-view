@@ -1,0 +1,9 @@
+# The only thing open to the internet. Gets and renews its HTTPS certificate by itself.
+{$DOMAIN}, www.{$DOMAIN} {
+	@www host www.{$DOMAIN}
+	redir @www https://{$DOMAIN}{uri} permanent
+
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy app:4310
+}
