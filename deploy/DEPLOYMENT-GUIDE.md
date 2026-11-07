@@ -48,7 +48,7 @@ separate test data and passwords.
 | GitHub | https://github.com/pradeept78/safe-view (private) |
 | AWS Lightsail | https://lightsail.aws.amazon.com/ (server `safe-view`, Sydney) |
 | Server address | `15.135.34.182` |
-| SSH key | `~/Downloads/LightsailDefaultKey-ap-southeast-2.pem` |
+| SSH key | `~/Downloads/safeview.pem` |
 | Code on the server | `~/safe-view-docker` |
 | Live data | `/var/lib/safe-view/safe-view.db` |
 | Backups | `/var/lib/safe-view/backups` |
@@ -170,7 +170,7 @@ When you connect, your Terminal is working on the server, not your Mac. The prom
 ### Do it
 
 ```bash
-ssh -i ~/Downloads/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.34.182
+ssh -i ~/Downloads/safeview.pem ubuntu@15.135.34.182
 ```
 
 Type `exit` to leave.
@@ -310,7 +310,7 @@ sudo cp /var/lib/safe-view/backups/safe-view-$(date -u +%F).db ~/safe-view-copy.
 2. In a new Terminal window on your Mac:
 
 ```bash
-scp -i ~/Downloads/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.34.182:safe-view-copy.db ~/Downloads/
+scp -i ~/Downloads/safeview.pem ubuntu@15.135.34.182:safe-view-copy.db ~/Downloads/
 ```
 
 3. Back on the server, remove the extra copy:
@@ -588,7 +588,7 @@ sudo rm /var/lib/safe-view/first-login.txt
 | 3. Check files | Mac | `git status` |
 | 4. Save it | Mac | `git add -A` then `git commit -m "Note"` |
 | 5. Upload it | Mac | `git push origin main` |
-| 6. Connect | Mac | `ssh -i ~/Downloads/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.34.182` |
+| 6. Connect | Mac | `ssh -i ~/Downloads/safeview.pem ubuntu@15.135.34.182` |
 | 7. Update | Server | `cd ~/safe-view-docker && sudo bash deploy/docker-update.sh` |
 | 8. Check it | Browser | https://safeviewglasssolutions.in/admin/ |
 

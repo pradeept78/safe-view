@@ -52,6 +52,13 @@ sudo docker compose exec -T app node scripts/reset-password.js admin
 
 It shows a new password once. Sign in and change it under My Account.
 
+## Enquiry alerts and the activity log
+
+New enquiries show a red count in the dashboard. Email alerts are optional: add the SMTP settings from
+`.env.example` to the server's `.env`, then run `sudo docker compose up -d`.
+
+The Activity page shows the admin who did what. It records actions, never passwords.
+
 ## How billing works
 
 - Anyone signed in can create a draft. Partners send it for approval.

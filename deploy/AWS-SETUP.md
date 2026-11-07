@@ -14,7 +14,7 @@ All data stays in `/var/lib/safe-view` on the server, outside the containers.
 Connect to the server:
 
 ```bash
-ssh -i ~/Downloads/LightsailDefaultKey-ap-southeast-2.pem ubuntu@15.135.34.182
+ssh -i ~/Downloads/safeview.pem ubuntu@15.135.34.182
 ```
 
 ### 1. Create a key so the server can read GitHub

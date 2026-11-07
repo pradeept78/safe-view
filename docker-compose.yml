@@ -1,9 +1,22 @@
 # Only Caddy is reachable from outside (80, 443). The app has no published port.
+x-logging: &limited-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   app:
     build: .
     container_name: safe-view-app
     restart: unless-stopped
+    logging: *limited-logs
+    environment:
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
     volumes:
       - ${DATA_DIR:-/var/lib/safe-view}:/data
     networks:
@@ -13,6 +26,7 @@ services:
     image: caddy:2.8-alpine
     container_name: safe-view-caddy
     restart: unless-stopped
+    logging: *limited-logs
     environment:
       DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
     ports:

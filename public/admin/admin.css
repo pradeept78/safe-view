@@ -358,3 +358,10 @@ button.link{padding:9px 4px;margin:-9px 0}
 @media (max-width:640px){
   #lines td[data-label="Material"]{width:100%}
 }
+
+/* New enquiry badge */
+.count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#c8362c;color:#fff;font:700 11px var(--sans);line-height:1}
+.side nav a .count{margin-left:auto}
+.tabbar button{position:relative}
+.tabbar button .count{position:absolute;top:2px;left:calc(50% + 7px)}
+.sheet-panel a .count{margin-left:auto}

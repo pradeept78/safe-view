@@ -142,6 +142,13 @@ function createSchema(db) {
       created_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY,
+      who TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS payments_bill ON payments(bill_id);
     CREATE INDEX IF NOT EXISTS vendor_payments_bill ON vendor_payments(bill_id);
   `);

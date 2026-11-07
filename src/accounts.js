@@ -172,8 +172,10 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
   // Mistakes are removed by the admin only, so a partner cannot quietly change the books.
   for (const [path, table] of [['payments', 'payments'], ['vendor-payments', 'vendor_payments'], ['expenses', 'expenses'], ['investments', 'investments']]) {
     app.delete(`/api/${path}/:id`, requireLogin, requireAdmin, (req, res) => {
-      const { changes } = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(Number(req.params.id));
-      if (!changes) throw new Problem(404, 'Entry not found');
+      const entry = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(Number(req.params.id));
+      if (!entry) throw new Problem(404, 'Entry not found');
+      db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(entry.id);
+      res.locals.activityDetail = `₹${entry.amount} on ${entry.date}`;
       res.json({ ok: true });
     });
   }
