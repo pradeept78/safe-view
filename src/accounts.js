@@ -2,6 +2,7 @@
 // Approved bills stay locked; everything here sits beside them in separate tables.
 
 const METHODS = ['cash', 'online'];
+const COST_TYPES = ['Glass', 'Installation', 'Transport', 'Hardware', 'Other'];
 const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 function isValidDate(value) {
@@ -42,16 +43,22 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
     SELECT v.*, u.name AS created_by_name FROM vendor_bills v JOIN users u ON u.id = v.created_by
     WHERE v.bill_id = ? ORDER BY v.date, v.id`).all(id);
 
+  const addVendorPayment = (entry) => db.prepare(`
+    INSERT INTO vendor_payments (bill_id, vendor_bill_id, date, vendor, description, amount, method, note, created_by, created_at)
+    VALUES (@billId, @vendorBillId, @date, @vendor, @description, @amount, @method, @note, @createdBy, @time)
+  `).run(entry).lastInsertRowid;
+
   function summarise(bill) {
     const totals = JSON.parse(bill.totals_json);
     const payments = paymentsOf(bill.id);
     const vendorPayments = vendorPaymentsOf(bill.id);
-    const vendorBills = vendorBillsOf(bill.id);
+    const vendorBills = vendorBillsOf(bill.id).map((cost) => {
+      const paid = sum(vendorPayments.filter((payment) => payment.vendor_bill_id === cost.id));
+      return { ...cost, paid, due: round2(cost.amount - paid) };
+    });
     const received = sum(payments);
     const vendorPaid = sum(vendorPayments);
     const vendorBilled = sum(vendorBills);
-    // A bill shows what is owed before it is paid. Payments with no bill still count as costs.
-    const vendorCost = Math.max(vendorBilled, vendorPaid);
     return {
       id: bill.id,
       number: bill.number,
@@ -70,10 +77,14 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
       balance: round2(totals.grandTotal - received),
       vendorPaid,
       vendorBilled,
-      vendorCost,
-      vendorDue: round2(Math.max(vendorBilled - vendorPaid, 0)),
+      vendorCost: vendorBilled,
+      vendorDue: round2(vendorBilled - vendorPaid),
+      costTypes: COST_TYPES,
+      costsByType: COST_TYPES
+        .map((type) => ({ type, amount: sum(vendorBills.filter((cost) => cost.category === type)) }))
+        .filter((entry) => entry.amount > 0),
       // GST belongs to the government, so profit is worked out on the amount before tax.
-      profit: round2(totals.basic - vendorCost),
+      profit: round2(totals.basic - vendorBilled),
       payments,
       vendorPayments,
       vendorBills,
@@ -112,16 +123,26 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
 
   app.post('/api/projects/:id/vendor-bills', requireLogin, (req, res) => {
     const bill = findProject(req.params.id);
-    if (bill.project_status === 'completed') throw new Problem(409, 'Reopen this project to add a late vendor bill');
+    if (bill.project_status === 'completed') throw new Problem(409, 'Reopen this project to add a late cost');
+    if (!COST_TYPES.includes(req.body.category)) throw new Problem(400, 'Choose the cost type');
     const vendor = text(req.body.vendor, 120);
-    if (!vendor) throw new Problem(400, 'Enter the vendor name');
+    if (!vendor) throw new Problem(400, 'Enter who this is paid to');
     const amount = round2(Number(req.body.amount));
     if (!Number.isFinite(amount) || amount <= 0) throw new Problem(400, 'Enter an amount more than zero');
-    const { lastInsertRowid } = db.prepare(`
-      INSERT INTO vendor_bills (bill_id, date, vendor, description, amount, created_by, created_at)
-      VALUES (@billId, @date, @vendor, @description, @amount, @createdBy, @time)
-    `).run({ billId: bill.id, date: readDate(req.body.date), vendor, description: text(req.body.description, 200), amount, createdBy: req.user.id, time: now() });
-    res.status(201).json({ id: lastInsertRowid });
+    const paidNow = round2(Number(req.body.paidNow || 0));
+    if (!Number.isFinite(paidNow) || paidNow < 0) throw new Problem(400, 'Enter a valid amount paid');
+    if (paidNow > amount) throw new Problem(400, 'Paid now cannot be more than the total');
+    const cost = { billId: bill.id, date: readDate(req.body.date), vendor, description: text(req.body.description, 200), createdBy: req.user.id, time: now() };
+    const payment = paidNow > 0 ? readMoney({ ...req.body, amount: paidNow }) : null;
+    const id = db.transaction(() => {
+      const { lastInsertRowid } = db.prepare(`
+        INSERT INTO vendor_bills (bill_id, date, vendor, description, amount, category, created_by, created_at)
+        VALUES (@billId, @date, @vendor, @description, @amount, @category, @createdBy, @time)
+      `).run({ ...cost, amount, category: req.body.category });
+      if (payment) addVendorPayment({ ...cost, ...payment, vendorBillId: lastInsertRowid });
+      return lastInsertRowid;
+    })();
+    res.status(201).json({ id });
   });
 
   app.post('/api/projects/:id/payments', requireLogin, (req, res) => {
@@ -138,13 +159,16 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
 
   app.post('/api/projects/:id/vendor-payments', requireLogin, (req, res) => {
     const bill = findProject(req.params.id);
-    const vendor = text(req.body.vendor, 120);
-    if (!vendor) throw new Problem(400, 'Enter the vendor name');
-    const { lastInsertRowid } = db.prepare(`
-      INSERT INTO vendor_payments (bill_id, date, vendor, description, amount, method, note, created_by, created_at)
-      VALUES (@billId, @date, @vendor, @description, @amount, @method, @note, @createdBy, @time)
-    `).run({ ...readMoney(req.body), billId: bill.id, vendor, description: text(req.body.description, 200), createdBy: req.user.id, time: now() });
-    res.status(201).json({ id: lastInsertRowid, createdBy: req.user.name });
+    const cost = db.prepare('SELECT * FROM vendor_bills WHERE id = ? AND bill_id = ?').get(Number(req.body.vendorBillId), bill.id);
+    if (!cost) throw new Problem(400, 'Choose the cost you are paying');
+    const entry = readMoney(req.body);
+    const paid = db.prepare('SELECT SUM(amount) AS amount FROM vendor_payments WHERE vendor_bill_id = ?').get(cost.id).amount || 0;
+    const due = round2(cost.amount - paid);
+    if (entry.amount > due) throw new Problem(400, `That is more than the ₹${due} still to pay`);
+    const id = addVendorPayment({
+      ...entry, billId: bill.id, vendorBillId: cost.id, vendor: cost.vendor, description: cost.description, createdBy: req.user.id, time: now(),
+    });
+    res.status(201).json({ id, createdBy: req.user.name });
   });
 
   app.get('/api/accounts', requireLogin, (req, res) => {
@@ -215,6 +239,9 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
     app.delete(`/api/${path}/:id`, requireLogin, requireAdmin, (req, res) => {
       const entry = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(Number(req.params.id));
       if (!entry) throw new Problem(404, 'Entry not found');
+      if (table === 'vendor_bills' && db.prepare('SELECT 1 FROM vendor_payments WHERE vendor_bill_id = ?').get(entry.id)) {
+        throw new Problem(409, 'Delete the payments for this cost first');
+      }
       db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(entry.id);
       res.locals.activityDetail = `₹${entry.amount} on ${entry.date}`;
       res.json({ ok: true });

@@ -28,7 +28,7 @@ function registerOverview(app, { db, requireLogin }) {
       const billedByVendors = costOf(row.id, 'vendor_bills');
       const paidToVendors = costOf(row.id, 'vendor_payments');
       const value = totals.basic || 0;
-      const cost = Math.max(billedByVendors, paidToVendors);
+      const cost = billedByVendors;
       return {
         value,
         billed: totals.grandTotal || 0,
@@ -37,7 +37,7 @@ function registerOverview(app, { db, requireLogin }) {
         completedOn: row.completed_on,
         cost,
         profit: value - cost,
-        vendorDue: Math.max(billedByVendors - paidToVendors, 0),
+        vendorDue: billedByVendors - paidToVendors,
       };
     });
     const sum = (list, key) => round2(list.reduce((amount, order) => amount + order[key], 0));

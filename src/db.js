@@ -176,6 +176,11 @@ function createSchema(db) {
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bills_invoice_number ON bills(invoice_number) WHERE invoice_number IS NOT NULL');
   if (!hasColumn('bills', 'project_status')) db.exec("ALTER TABLE bills ADD COLUMN project_status TEXT NOT NULL DEFAULT 'in_progress'");
   if (!hasColumn('bills', 'completed_on')) db.exec('ALTER TABLE bills ADD COLUMN completed_on TEXT');
+  if (!hasColumn('vendor_bills', 'category')) db.exec("ALTER TABLE vendor_bills ADD COLUMN category TEXT NOT NULL DEFAULT 'Glass'");
+  if (!hasColumn('vendor_payments', 'vendor_bill_id')) {
+    db.exec('ALTER TABLE vendor_payments ADD COLUMN vendor_bill_id INTEGER REFERENCES vendor_bills(id)');
+    linkVendorPayments(db);
+  }
   if (!hasColumn('users', 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   if (!hasColumn('bills', 'order_accepted_on')) db.exec('ALTER TABLE bills ADD COLUMN order_accepted_on TEXT');
   if (!hasColumn('bills', 'lost_reason')) db.exec("ALTER TABLE bills ADD COLUMN lost_reason TEXT NOT NULL DEFAULT ''");
@@ -190,6 +195,26 @@ function createSchema(db) {
       OR id IN (SELECT bill_id FROM vendor_payments))`);
   }
   if (!hasColumn('bills', 'extras_json')) db.exec("ALTER TABLE bills ADD COLUMN extras_json TEXT NOT NULL DEFAULT '[]'");
+}
+
+// Every vendor payment now belongs to a project cost. Older payments join a cost from the same
+// vendor when it has room; the rest become a cost of their own, so no money is lost or counted twice.
+function linkVendorPayments(db) {
+  const findCost = db.prepare(`
+    SELECT c.id FROM vendor_bills c
+    WHERE c.bill_id = @billId AND lower(trim(c.vendor)) = lower(trim(@vendor))
+      AND c.amount - COALESCE((SELECT SUM(p.amount) FROM vendor_payments p WHERE p.vendor_bill_id = c.id), 0) >= @amount - 0.001
+    ORDER BY c.date, c.id LIMIT 1`);
+  const addCost = db.prepare(`
+    INSERT INTO vendor_bills (bill_id, date, vendor, description, amount, category, created_by, created_at)
+    VALUES (@bill_id, @date, @vendor, @description, @amount, 'Other', @created_by, @created_at)`);
+  const link = db.prepare('UPDATE vendor_payments SET vendor_bill_id = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const payment of db.prepare('SELECT * FROM vendor_payments WHERE vendor_bill_id IS NULL ORDER BY date, id').all()) {
+      const cost = findCost.get({ billId: payment.bill_id, vendor: payment.vendor, amount: payment.amount });
+      link.run(cost ? cost.id : addCost.run(payment).lastInsertRowid, payment.id);
+    }
+  })();
 }
 
 function seed(db, firstLoginFile) {
@@ -225,4 +250,4 @@ function openDatabase(file, firstLoginFile) {
   return db;
 }
 
-module.exports = { openDatabase, hashPassword, checkPassword };
+module.exports = { openDatabase, hashPassword, checkPassword, linkVendorPayments };

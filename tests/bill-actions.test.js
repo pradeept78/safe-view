@@ -76,7 +76,7 @@ test('approving a revision moves the order, payments and vendor costs to the new
   const admin = await login('admin');
   const id = await makeBill(admin, { won: true });
   await call(admin, 'POST', `/api/projects/${id}/payments`, { date: '2026-10-06', amount: 3000, method: 'cash' });
-  await call(admin, 'POST', `/api/projects/${id}/vendor-payments`, { date: '2026-10-07', vendor: 'V', amount: 1000, method: 'online' });
+  await call(admin, 'POST', `/api/projects/${id}/vendor-bills`, { date: '2026-10-07', category: 'Glass', vendor: 'V', amount: 1000, paidNow: 1000, method: 'online' });
 
   const { body: revision } = await call(admin, 'POST', `/api/bills/${id}/revise`);
   await call(admin, 'PUT', `/api/bills/${revision.id}`, { ...revision, lines: [line(12000)] });

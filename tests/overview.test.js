@@ -72,7 +72,7 @@ test('totals use won orders before GST, and count all money in and out', async (
   await bill(admin, 3000, 'waiting');
   const month = thisMonth();
   await call(admin, 'POST', `/api/projects/${won}/payments`, { date: `${month}-03`, amount: 8000, method: 'cash' });
-  await call(admin, 'POST', `/api/projects/${won}/vendor-payments`, { date: `${month}-03`, vendor: 'V', amount: 4000, method: 'online' });
+  await call(admin, 'POST', `/api/projects/${won}/vendor-bills`, { date: `${month}-03`, category: 'Glass', vendor: 'V', amount: 4000, paidNow: 4000, method: 'online' });
   await call(admin, 'POST', '/api/expenses', { date: `${month}-04`, category: 'Rent', amount: 1000, method: 'cash' });
   await call(admin, 'POST', '/api/investments', { date: `${month}-01`, person: 'Admin', paidFor: 'Machine', amount: 50000, method: 'online' });
 

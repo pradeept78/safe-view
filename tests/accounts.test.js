@@ -72,8 +72,8 @@ test('a payment cannot be more than the balance', async () => {
 test('profit leaves out GST and takes off vendor payments', async () => {
   const admin = await login('admin');
   const id = await approvedBill(admin);
-  await call(admin, 'POST', `/api/projects/${id}/vendor-payments`, { date: '2026-10-03', vendor: 'Glass Supplier', description: 'Toughened glass', amount: 6000, method: 'online' });
-  await call(admin, 'POST', `/api/projects/${id}/vendor-payments`, { date: '2026-10-04', vendor: 'Fitter', amount: 1000, method: 'cash' });
+  await call(admin, 'POST', `/api/projects/${id}/vendor-bills`, { date: '2026-10-03', category: 'Glass', vendor: 'Glass Supplier', description: 'Toughened glass', amount: 6000, paidNow: 6000, method: 'online' });
+  await call(admin, 'POST', `/api/projects/${id}/vendor-bills`, { date: '2026-10-04', category: 'Glass', vendor: 'Fitter', amount: 1000, paidNow: 1000, method: 'cash' });
   const { body } = await call(admin, 'GET', `/api/projects/${id}`);
   assert.equal(body.orderValue, 10000);
   assert.equal(body.gst, 1800);
@@ -111,7 +111,7 @@ test('the month shows money in, money out and expenses by category', async () =>
   await call(admin, 'POST', `/api/projects/${id}/payments`, { date: '2026-08-10', amount: 3000, method: 'cash' });
   await call(admin, 'POST', `/api/projects/${id}/payments`, { date: '2026-08-11', amount: 2000, method: 'online' });
   await call(admin, 'POST', `/api/projects/${id}/payments`, { date: '2026-09-01', amount: 999, method: 'cash' });
-  await call(admin, 'POST', `/api/projects/${id}/vendor-payments`, { date: '2026-08-12', vendor: 'V', amount: 1500, method: 'online' });
+  await call(admin, 'POST', `/api/projects/${id}/vendor-bills`, { date: '2026-08-12', category: 'Glass', vendor: 'V', amount: 1500, paidNow: 1500, method: 'online' });
   await call(admin, 'POST', '/api/expenses', { date: '2026-08-01', category: 'Rent', description: 'Shop rent', amount: 800, method: 'online' });
   await call(admin, 'POST', '/api/expenses', { date: '2026-08-20', category: 'Rent', description: 'Godown', amount: 200, method: 'cash' });
   await call(admin, 'POST', '/api/expenses', { date: '2026-08-21', category: 'Transport', description: 'Van', amount: 100, method: 'cash' });
