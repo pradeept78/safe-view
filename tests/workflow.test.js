@@ -242,6 +242,29 @@ test('a backup is a working copy of the database and old ones are removed', asyn
   fs.rmSync(dir, { recursive: true });
 });
 
+test('the installable app files are served, and saved files never include private data', async () => {
+  const get = (path) => fetch(base + path);
+  const manifest = await (await get('/admin/manifest.webmanifest')).json();
+  assert.equal(manifest.start_url, '/admin/');
+  assert.equal(manifest.display, 'standalone');
+  for (const icon of manifest.icons) {
+    const res = await get(`/admin/${icon.src}`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /image\/png/);
+  }
+  assert.ok(manifest.icons.some((icon) => icon.purpose === 'maskable'));
+  assert.equal((await get('/admin/offline.html')).status, 200);
+
+  const worker = await get('/admin/sw.js');
+  assert.match(worker.headers.get('content-type'), /javascript/);
+  const code = await worker.text();
+  const shell = code.match(/const SHELL = \[([\s\S]*?)\]/)[1];
+  assert.doesNotMatch(shell, /\/api|\/print/);
+  for (const path of shell.match(/'[^']+'/g).map((item) => item.slice(1, -1))) {
+    assert.equal((await get(path)).status, 200, path);
+  }
+});
+
 test('public details leave out bank and tax settings', async () => {
   const { body } = await call(null, 'GET', '/api/public');
   assert.equal(body.business_name, 'Safe View Glass Solutions');

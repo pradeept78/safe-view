@@ -8,14 +8,22 @@ const STATUS = { draft: 'Draft', pending: 'Waiting for admin', approved: 'Approv
 const badge = (status) => `<span class="badge ${esc(status)}">${esc(STATUS[status] || status)}</span>`;
 const QUOTE_STATUS = { waiting: 'Waiting for customer', won: 'Won', lost: 'Lost' };
 const quoteBadge = (status) => `<span class="badge q-${esc(status)}">${esc(QUOTE_STATUS[status] || status)}</span>`;
-const billBadge = (bill) => (bill.status === 'approved' ? quoteBadge(bill.quoteStatus) : badge(bill.status));
+const billBadge = (bill) => {
+  if (bill.supersededBy) return '<span class="badge q-revised">Revised</span>';
+  return bill.status === 'approved' ? quoteBadge(bill.quoteStatus) : badge(bill.status);
+};
 
 async function api(url, method = 'GET', body) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('Could not reach Safe View. Check your internet and try again. What you typed is still here.');
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && url !== '/api/login' && url !== '/api/me') {
     me = null;
@@ -63,6 +71,7 @@ function shell(active, content) {
         <div class="sheet-panel">
           <p class="sheet-who">${esc(me.name)} · ${me.role === 'admin' ? 'Admin' : 'Partner'}</p>
           ${more.map(([hash, label]) => link(hash, label)).join('')}
+          ${canOfferInstall() ? '<button type="button" class="sheet-install" id="sheetInstall">Install App</button>' : ''}
           <button type="button" id="sheetLogout">Sign out</button>
         </div>
       </div>
@@ -79,6 +88,13 @@ function shell(active, content) {
   };
   document.getElementById('logout').onclick = signOut;
   document.getElementById('sheetLogout').onclick = signOut;
+  const installButton = document.getElementById('sheetInstall');
+  if (installButton) {
+    installButton.onclick = () => {
+      toggleSheet(false);
+      installApp();
+    };
+  }
 }
 
 function showToast(message) {
@@ -86,9 +102,80 @@ function showToast(message) {
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.setAttribute('role', 'status');
-  toast.textContent = message;
+  toast.innerHTML = '<span class="toast-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.500 4.500 4.500L19 7.500"/></svg></span><span></span>';
+  toast.lastElementChild.textContent = message;
   document.body.append(toast);
-  setTimeout(() => toast.remove(), 2600);
+  setTimeout(() => {
+    toast.classList.add('leaving');
+    setTimeout(() => toast.remove(), 200);
+  }, 2600);
+}
+
+const DIALOG_ICONS = {
+  danger: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/>',
+  warn: '<path d="M12 4 2.500 20h19zM12 10v4M12 17h.01"/>',
+  info: '<path d="M4 12a8 8 0 1 1 2.500 5.800L4 20l.8-3.200A8 8 0 0 1 4 12zM9 10h6M9 14h4"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l3 3"/>',
+};
+
+// One designed pop-up for every question. It resolves to the typed text, true, or null if cancelled.
+function openDialog({ tone = 'warn', title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', field }) {
+  return new Promise((resolve) => {
+    const returnFocus = document.activeElement;
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    overlay.innerHTML = `
+      <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogText" novalidate>
+        <span class="dialog-icon ${esc(tone)}" aria-hidden="true"><svg viewBox="0 0 24 24">${DIALOG_ICONS[tone]}</svg></span>
+        <h2 id="dialogTitle">${esc(title)}</h2>
+        <p id="dialogText">${esc(message)}</p>
+        ${field ? `<label>${esc(field.label)}${field.multiline
+    ? `<textarea name="value" rows="3" maxlength="${field.maxLength || 500}" placeholder="${esc(field.placeholder || '')}"></textarea>`
+    : `<input name="value" type="text" autocomplete="off" autocapitalize="none" maxlength="${field.maxLength || 200}" placeholder="${esc(field.placeholder || '')}">`}</label>
+          <p class="dialog-error" id="dialogError" role="alert"></p>` : ''}
+        <div class="dialog-actions">
+          <button type="button" class="btn" data-cancel>${esc(cancelLabel)}</button>
+          <button class="btn ${tone === 'danger' ? 'destroy' : 'main'}">${esc(confirmLabel)}</button>
+        </div>
+      </form>`;
+    const form = overlay.querySelector('form');
+    const input = form.elements.value;
+
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey);
+      overlay.classList.add('leaving');
+      setTimeout(() => overlay.remove(), 160);
+      returnFocus?.focus?.();
+      resolve(result);
+    };
+    function onKey(event) {
+      if (event.key === 'Escape') return close(null);
+      if (event.key !== 'Tab') return;
+      const items = [...form.querySelectorAll('input, textarea, button')];
+      const edge = event.shiftKey ? items[0] : items[items.length - 1];
+      if (document.activeElement === edge) {
+        event.preventDefault();
+        (event.shiftKey ? items[items.length - 1] : items[0]).focus();
+      }
+    }
+
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      if (!field) return close(true);
+      const problem = field.validate?.(input.value);
+      if (problem) {
+        form.querySelector('#dialogError').textContent = problem;
+        input.focus();
+        return;
+      }
+      close(input.value);
+    };
+    form.querySelector('[data-cancel]').onclick = () => close(null);
+    overlay.onclick = (event) => { if (event.target === overlay) close(null); };
+    document.addEventListener('keydown', onKey);
+    document.body.append(overlay);
+    (input || form.querySelector('button:not([data-cancel])')).focus();
+  });
 }
 
 function showAlert(id, message, kind = 'bad') {
@@ -122,34 +209,67 @@ function renderLogin() {
 }
 
 // ----- Bills list -----
-async function billsPage() {
-  const [bills, enquiries] = await Promise.all([api('/api/bills'), api('/api/enquiries')]);
-  const waiting = bills.filter((b) => b.status === 'pending').length;
-  const drafts = bills.filter((b) => b.status === 'draft').length;
-  const newEnquiries = enquiries.filter((e) => e.status === 'new').length;
-  const month = new Date().toISOString().slice(0, 7);
-  const approvedTotal = bills
-    .filter((b) => b.status === 'approved' && b.approvedAt.startsWith(month))
-    .reduce((total, b) => total + b.totals.grandTotal, 0);
-  const rows = bills.map((b) => `
+const billList = { q: '', status: 'all', items: [], total: 0 };
+const BILL_FILTER_LABELS = [['all', 'All bills'], ['draft', 'Drafts'], ['pending', 'Waiting for admin'], ['waiting', 'Waiting for customer'], ['won', 'Won'], ['lost', 'Lost'], ['revised', 'Revised (old versions)']];
+
+function drawBillResults() {
+  const box = document.getElementById('billResults');
+  if (!box) return;
+  const rows = billList.items.map((b) => `
     <tr class="link" data-id="${b.id}">
       <td>${esc(b.number || `Draft ${b.id}`)}</td><td>${esc(b.customerName)}</td><td>${billBadge(b)}</td>
       <td>${esc(b.preparedBy)}</td><td class="n">${money(b.totals.grandTotal)}</td>
     </tr>`).join('');
+  const searching = billList.q || billList.status !== 'all';
+  box.innerHTML = billList.items.length ? `
+    <table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>
+    <p class="muted list-count">Showing ${billList.items.length} of ${billList.total}</p>
+    ${billList.items.length < billList.total ? '<button class="btn load-more" id="loadMore">Load More</button>' : ''}`
+    : `<p class="muted">${searching ? 'No bills match this search.' : 'No bills yet. Choose New Bill to make the first one.'}</p>`;
+  box.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/bill/${row.dataset.id}`; }; });
+  const more = document.getElementById('loadMore');
+  if (more) more.onclick = () => loadBills(true);
+}
+
+async function fetchBills(offset) {
+  const query = new URLSearchParams({ q: billList.q, status: billList.status, offset: String(offset) });
+  return api(`/api/bills?${query}`);
+}
+
+async function loadBills(append = false) {
+  const result = await fetchBills(append ? billList.items.length : 0);
+  billList.items = append ? [...billList.items, ...result.bills] : result.bills;
+  billList.total = result.total;
+  drawBillResults();
+}
+
+async function billsPage() {
+  const [result, enquiries] = await Promise.all([fetchBills(0), api('/api/enquiries')]);
+  billList.items = result.bills;
+  billList.total = result.total;
+  const { stats } = result;
+  const newEnquiries = enquiries.filter((e) => e.status === 'new').length;
   shell('bills', `
     <div class="head"><h1>Bills</h1><a class="btn main" href="#/bill/new">+ New Bill</a></div>
     <div class="stats">
-      <div class="stat hot"><small>Approved this month</small><b>${money(approvedTotal).replace(/\.\d+$/, '')}</b></div>
-      <div class="stat"><small>Waiting for approval</small><b>${waiting}</b></div>
-      <div class="stat"><small>Drafts</small><b>${drafts}</b></div>
+      <div class="stat hot"><small>Approved this month</small><b>${money(stats.approvedThisMonth).replace(/\.\d+$/, '')}</b></div>
+      <div class="stat"><small>Waiting for approval</small><b>${stats.waiting}</b></div>
+      <div class="stat"><small>Drafts</small><b>${stats.drafts}</b></div>
       <div class="stat"><small>New enquiries</small><b>${newEnquiries}</b></div>
     </div>
-    ${me.role === 'admin' && waiting ? `<div class="alert warn">${waiting} bill${waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
-    <div class="card scroll">
-      ${bills.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>`
-    : '<p class="muted">No bills yet. Choose New Bill to make the first one.</p>'}
-    </div>`);
-  root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/bill/${row.dataset.id}`; }; });
+    ${me.role === 'admin' && stats.waiting ? `<div class="alert warn">${stats.waiting} bill${stats.waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
+    <div class="finder">
+      <label>Search<input id="billSearch" type="search" placeholder="Customer, phone, bill or invoice number" value="${esc(billList.q)}"></label>
+      <label>Show<select id="billStatus">${BILL_FILTER_LABELS.map(([value, label]) => `<option value="${value}" ${billList.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+    </div>
+    <div class="card scroll" id="billResults"></div>`);
+  drawBillResults();
+  let timer;
+  document.getElementById('billSearch').oninput = (event) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { billList.q = event.target.value.trim(); loadBills(); }, 250);
+  };
+  document.getElementById('billStatus').onchange = (event) => { billList.status = event.target.value; loadBills(); };
 }
 
 // ----- Bill editor -----
@@ -181,6 +301,9 @@ async function billPage(id) {
     </div>
     <div id="msg"></div>
     ${bill?.returnNote ? `<div class="alert warn">Sent back by admin: ${esc(bill.returnNote)}</div>` : ''}
+    ${bill?.supersededBy ? `<div class="alert bad">This old version was replaced by <a href="#/bill/${bill.supersededBy}">${esc(bill.supersededByNumber)}</a>. It no longer counts.</div>` : ''}
+    ${bill?.revisesId ? `<div class="alert warn">${bill.status === 'approved' ? 'Replaces' : 'Revising'} <a href="#/bill/${bill.revisesId}">${esc(bill.revisesNumber)}</a>.${bill.status === 'approved' ? '' : ' The old bill stays valid until this one is approved.'}</div>` : ''}
+    ${bill?.openRevisionId ? `<div class="alert warn">A revision is in progress. <a href="#/bill/${bill.openRevisionId}">Open the revision</a>.</div>` : ''}
     ${isAdmin && missing.length && bill?.status !== 'approved' ? '<div class="alert warn">Your GST number, address or bank details are blank in Settings. Add them before approving real bills.</div>' : ''}
     <div class="card">
       <h2>Customer</h2>
@@ -209,6 +332,7 @@ async function billPage(id) {
     </div>
     <div class="card"><div class="totals" id="totals"></div></div>
     <div id="decision"></div>
+    ${bill?.history?.length > 1 ? `<div class="card"><h2>Version history (${bill.history.length})</h2><div class="versions">${bill.history.map((v, index) => `<a href="#/bill/${v.id}" class="${v.id === bill.id ? 'on' : ''}">Version ${index + 1}: ${esc(v.number)}</a>`).join('')}</div></div>` : ''}
     ${bill ? `<p class="muted">Prepared by ${esc(bill.preparedBy)}${bill.checkedBy ? ` · Checked by ${esc(bill.checkedBy)}` : ''}</p>` : ''}
     <div class="savebar"><div class="savetotal" id="saveTotal"></div><div class="acts" id="acts"></div></div>`);
 
@@ -334,7 +458,10 @@ async function billPage(id) {
     buttons.push(['Save Draft', '', () => act(async () => open(await save()))]);
     if (bill && bill.status === 'draft') {
       buttons.unshift(['Delete', 'danger', () => act(async () => {
-        if (!confirm('Delete this draft?')) return;
+        const sure = await openDialog({
+          tone: 'danger', title: 'Delete this draft?', message: 'This bill will be removed for everyone. This cannot be undone.', confirmLabel: 'Delete Draft', cancelLabel: 'Keep Draft',
+        });
+        if (!sure) return;
         await api(`/api/bills/${bill.id}`, 'DELETE');
         location.hash = '#/bills';
       })]);
@@ -352,7 +479,13 @@ async function billPage(id) {
     }
   } else if (bill.status === 'pending' && isAdmin) {
     buttons.push(['Send Back', '', () => act(async () => {
-      const note = prompt('What should be changed?');
+      const note = await openDialog({
+        tone: 'info',
+        title: 'Send back for changes?',
+        message: 'The bill goes back to draft so a partner can fix it.',
+        confirmLabel: 'Send Back',
+        field: { label: 'What should be changed?', multiline: true, placeholder: 'Like: please check the width on line 2', validate: (value) => (value.trim() ? '' : 'Tell your partner what to change') },
+      });
       if (note === null) return;
       open(await api(`/api/bills/${bill.id}/return`, 'POST', { note }));
     })]);
@@ -367,7 +500,23 @@ async function billPage(id) {
     acts.append(button);
   });
   if (bill?.status === 'approved') {
-    acts.insertAdjacentHTML('beforeend', `${bill.quoteStatus === 'won' ? `<a class="btn" href="#/project/${bill.id}">Order &amp; Payments</a>` : ''}<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
+    acts.insertAdjacentHTML('beforeend', `${bill.quoteStatus === 'won' && !bill.supersededBy ? `<a class="btn" href="#/project/${bill.id}">Order &amp; Payments</a>` : ''}<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
+    if (!bill.supersededBy && !bill.invoiceNumber && !bill.openRevisionId && bill.quoteStatus !== 'lost') {
+      const reviseButton = document.createElement('button');
+      reviseButton.className = 'btn';
+      reviseButton.textContent = 'Revise Bill';
+      reviseButton.onclick = () => act(async () => {
+        const sure = await openDialog({
+          title: 'Revise this bill?',
+          message: 'This makes an editable copy. The current bill stays valid until the copy is approved, then payments and order details move across.',
+          confirmLabel: 'Revise Bill',
+        });
+        if (!sure) return;
+        const copy = await api(`/api/bills/${bill.id}/revise`, 'POST');
+        location.hash = `#/bill/${copy.id}`;
+      });
+      acts.prepend(reviseButton);
+    }
     await drawDecision(bill);
   } else if (bill?.status === 'pending' && !isAdmin) {
     acts.innerHTML = '<p class="muted">Waiting for the admin to approve this bill.</p>';
@@ -601,7 +750,14 @@ async function usersPage() {
       window.scrollTo(0, 0);
     };
     tr.querySelector('[data-password]').onclick = async () => {
-      const newPassword = prompt('New password, at least 8 characters. Share it privately and ask them to change it.');
+      const person = tr.querySelector('[data-k=name]').value;
+      const newPassword = await openDialog({
+        tone: 'key',
+        title: `Reset password for ${person}?`,
+        message: 'They will be signed out. Share the new password privately and ask them to change it.',
+        confirmLabel: 'Reset Password',
+        field: { label: 'New password', placeholder: 'At least 8 characters', validate: (value) => (value.length >= 8 ? '' : 'Use at least 8 characters') },
+      });
       if (newPassword === null) return;
       try {
         await api(`/api/users/${id}/password`, 'POST', { newPassword });
@@ -659,10 +815,16 @@ function accountPage() {
 // ----- Customer decision on an approved bill -----
 async function drawDecision(bill) {
   const box = document.getElementById('decision');
+  if (bill.supersededBy) return;
   const reasons = bill.quoteStatus === 'waiting' ? await api('/api/quotation-reasons') : [];
   const send = async (path, body) => {
     try {
       await api(`/api/quotations/${bill.id}/${path}`, 'PUT', body);
+      if (path === 'won') {
+        location.hash = `#/project/${bill.id}`;
+        showToast('Order won. It is now a project.');
+        return;
+      }
       route();
     } catch (error) {
       showAlert('msg', error.message);
@@ -702,13 +864,58 @@ async function drawDecision(bill) {
   const detail = bill.quoteStatus === 'won'
     ? `Order accepted on ${shortDate(bill.acceptedOn)}.`
     : `Lost: ${esc(bill.lostReason)}${bill.lostNote ? `. ${esc(bill.lostNote)}` : ''}`;
+  const canInvoice = bill.quoteStatus === 'won' && !bill.invoiceNumber;
   box.innerHTML = `
     <div class="card decided">
       <div><h2>Customer decision</h2><p class="muted" style="margin:0">${detail}</p></div>
-      <button class="btn" id="reopen">Reopen Quotation</button>
-    </div>`;
-  document.getElementById('reopen').onclick = () => {
-    if (confirm('Reopen this quotation? It will go back to waiting for the customer.')) send('reopen');
+      ${bill.invoiceNumber ? '' : '<button class="btn" id="reopen">Reopen Quotation</button>'}
+    </div>
+    ${bill.invoiceNumber ? `<div class="card decided">
+      <div><h2>Tax invoice ${esc(bill.invoiceNumber)}</h2><p class="muted" style="margin:0">Issued ${shortDate(bill.invoiceDate)}. This order is now locked.</p></div>
+      <a class="btn go" href="/print/${bill.id}/tax-invoice" target="_blank" rel="noopener">Print Tax Invoice</a>
+    </div>` : ''}
+    ${canInvoice && me.role === 'admin' ? `<form class="card" id="invoice">
+      <h2>Tax invoice</h2>
+      <p class="muted" style="margin:-8px 0 12px">Check the bill first. Once issued, this order cannot be revised or reopened.</p>
+      <div class="entry" style="margin:0;padding:0;border:0">
+        <label>Invoice date<input type="date" name="date" value="${today()}" max="${today()}" required></label>
+        <label>Place of supply (state code)<input name="stateCode" value="${esc(bill.customerStateCode)}" inputmode="numeric" maxlength="2" placeholder="Like 29" required></label>
+        <button class="btn main">Create Tax Invoice</button>
+      </div>
+    </form>` : ''}
+    ${canInvoice && me.role !== 'admin' ? '<p class="muted">The admin can create the tax invoice for this order.</p>' : ''}`;
+  const invoiceForm = document.getElementById('invoice');
+  if (invoiceForm) {
+    invoiceForm.onsubmit = async (event) => {
+      event.preventDefault();
+      const sure = await openDialog({
+        tone: 'warn',
+        title: 'Create tax invoice?',
+        message: 'This uses the next invoice number and cannot be undone. The order can no longer be revised or reopened.',
+        confirmLabel: 'Create Invoice',
+      });
+      if (!sure) return;
+      try {
+        await api(`/api/bills/${bill.id}/tax-invoice`, 'POST', fields(invoiceForm));
+        showToast('Tax invoice created');
+        route();
+      } catch (error) {
+        showAlert('msg', error.message);
+        window.scrollTo(0, 0);
+      }
+    };
+  }
+  const reopenButton = document.getElementById('reopen');
+  if (!reopenButton) return;
+  reopenButton.onclick = async () => {
+    const sure = await openDialog({
+      title: 'Reopen this quotation?',
+      message: bill.quoteStatus === 'won'
+        ? 'It will leave Projects and go back to waiting for the customer. The order date will be cleared.'
+        : 'It will go back to waiting for the customer, and the lost reason will be cleared.',
+      confirmLabel: 'Reopen',
+    });
+    if (sure) send('reopen');
   };
 }
 
@@ -817,7 +1024,10 @@ function wireMoneyPage(redraw) {
   });
   root.querySelectorAll('[data-delete]').forEach((button) => {
     button.onclick = async () => {
-      if (!confirm('Delete this entry? This cannot be undone.')) return;
+      const sure = await openDialog({
+        tone: 'danger', title: 'Delete this entry?', message: 'Your totals will update straight away. This cannot be undone.', confirmLabel: 'Delete Entry', cancelLabel: 'Keep Entry',
+      });
+      if (!sure) return;
       try {
         await api(`/api/${button.dataset.delete}/${button.dataset.id}`, 'DELETE');
         await redraw();
@@ -1036,6 +1246,60 @@ async function route() {
   } catch (error) {
     if (me) shell('', `<div class="alert bad">${esc(error.message)}</div><a class="btn" href="#/bills">Back to bills</a>`);
   }
+}
+
+// ----- Installing the app -----
+let installEvent = null;
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIphone = () => !/android/i.test(navigator.userAgent)
+  && (/iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+const canOfferInstall = () => !isInstalled() && (Boolean(installEvent) || isIphone() || window.innerWidth <= 860);
+
+async function installApp() {
+  if (installEvent) {
+    installEvent.prompt();
+    await installEvent.userChoice;
+    installEvent = null;
+    return;
+  }
+  await openDialog({
+    tone: 'info',
+    title: 'Install Safe View',
+    message: isIphone()
+      ? 'In Safari, tap the Share button, then Add to Home Screen, then Add.'
+      : 'Open your browser menu, then tap Install app or Add to Home screen.',
+    confirmLabel: 'Got It',
+    cancelLabel: 'Later',
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installEvent = event;
+});
+window.addEventListener('appinstalled', () => {
+  installEvent = null;
+  showToast('Safe View is installed');
+});
+
+function showConnection() {
+  document.querySelector('.offline-bar')?.remove();
+  if (navigator.onLine) return;
+  const bar = document.createElement('div');
+  bar.className = 'offline-bar';
+  bar.setAttribute('role', 'status');
+  bar.textContent = "You're offline. Changes can't be saved until you reconnect.";
+  document.body.prepend(bar);
+}
+window.addEventListener('offline', showConnection);
+window.addEventListener('online', () => {
+  showConnection();
+  showToast('Back online');
+});
+showConnection();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 
 // On phones each table row becomes a card, and these labels stand in for the hidden column headings.

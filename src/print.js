@@ -28,6 +28,7 @@ const STYLE = `
   .foot>div:first-child{border-right:1px solid #000}
   .terms{white-space:pre-line;font-size:12px}
   .red{color:#c00;font-weight:700}
+  .replaced{border:2px solid #c00;color:#c00;font-weight:700;text-align:center;padding:6px;margin-bottom:8px}
   .row{display:flex;justify-content:space-between;gap:10px}
   .grand{font-size:16px;font-weight:700;border-top:1px solid #000;margin-top:6px;padding-top:6px}
   .words{border:1px solid #000;border-top:0;padding:7px 10px;font-weight:700}
@@ -83,28 +84,39 @@ function renderExtras(extras) {
     <div class="scroll"><table><tr><th>SR</th><th>Description</th><th>HSN/SAC</th><th>Amount</th></tr>${rows}</table></div>`;
 }
 
-function renderBill(bill) {
-  const b = bill.business;
+function renderBill(bill, { invoice = false } = {}) {
+  const b = invoice ? bill.invoiceBusiness : bill.business;
   const t = bill.totals;
+  // Tax is split between the centre and state inside one state, and is IGST between states.
+  const interstate = invoice && Boolean(b.gstin) && b.gstin.slice(0, 2) !== bill.invoiceStateCode;
   // Bills saved before GST moved onto each material have one rate and no list of taxes.
   const taxes = t.taxes || [{ percent: t.gstPercent, cgst: t.cgst, sgst: t.sgst }];
-  const taxRows = taxes.map((tax) => `
+  const taxRows = taxes.map((tax) => (interstate ? `
+          <div class="row"><span>IGST ${tax.percent}%</span><span>${money(tax.cgst + tax.sgst)}</span></div>` : `
           <div class="row"><span>C-GST ${tax.percent / 2}%</span><span>${money(tax.cgst)}</span></div>
-          <div class="row"><span>S-GST ${tax.percent / 2}%</span><span>${money(tax.sgst)}</span></div>`).join('');
+          <div class="row"><span>S-GST ${tax.percent / 2}%</span><span>${money(tax.sgst)}</span></div>`)).join('');
   const contact = [b.gstin && `GSTIN: ${b.gstin}`, b.email && `Email: ${b.email}`, b.phone && `Ph: ${b.phone}`].filter(Boolean).join('   ');
   const bank = [['Bank', b.bank_name], ['A/c No', b.bank_account], ['IFSC', b.bank_ifsc], ['Branch', b.bank_branch]].filter(([, v]) => v);
 
-  return page(bill.number, `
+  const heading = invoice ? 'TAX INVOICE' : 'PROFORMA INVOICE';
+  const documentBox = invoice
+    ? `<b class="big">Invoice No : ${esc(bill.invoiceNumber)}</b><br>Invoice Date : ${esc(bill.invoiceDate.split('-').reverse().join('/'))}<br>Proforma Ref : ${esc(bill.number)}`
+    : `<b class="big">Proforma No : ${esc(bill.number)}</b><br>Date : ${date(bill.approvedAt)}${bill.revisesNumber ? `<br>Replaces : ${esc(bill.revisesNumber)}` : ''}`;
+  const replaced = !invoice && bill.supersededBy
+    ? `<div class="replaced">Replaced by ${esc(bill.supersededByNumber)}. This bill is no longer valid.</div>` : '';
+
+  return page(invoice ? bill.invoiceNumber : bill.number, `
     <div class="tools"><button onclick="window.print()">Print</button></div>
     <div class="sheet">
       <header>
         <div class="logo"><img src="/img/emblem.png" alt=""><img src="/img/word.png" alt="${esc(b.business_name)}"></div>
         <div><h1>${esc(b.business_name)}</h1><p>${esc(b.address)}</p><p>${esc(contact)}</p></div>
       </header>
-      <h2>PROFORMA INVOICE</h2>
+      <h2>${heading}</h2>
+      ${replaced}
       <div class="two">
-        <div class="box"><b class="big">Proforma No : ${esc(bill.number)}</b><br>Date : ${date(bill.approvedAt)}</div>
-        <div class="box">Project Remark : ${esc(bill.projectRemark)}<br>Freight : To be billed</div>
+        <div class="box">${documentBox}</div>
+        <div class="box">${invoice ? `Place of Supply (State Code) : ${esc(bill.invoiceStateCode)}<br>` : ''}Project Remark : ${esc(bill.projectRemark)}<br>Freight : To be billed</div>
       </div>
       <div class="two">
         <div class="box"><b>M/s. ${esc(bill.customerName)}</b><br>${esc(bill.customerAddress)}<br>State Code : ${esc(bill.customerStateCode)}<br>GST No. : ${esc(bill.customerGstin)}</div>

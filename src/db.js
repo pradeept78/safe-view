@@ -149,6 +149,14 @@ function createSchema(db) {
   // Databases made before these columns existed get them here, keeping all their data.
   const hasColumn = (table, name) => db.prepare(`PRAGMA table_info(${table})`).all().some((column) => column.name === name);
   if (!hasColumn('glass_types', 'gst_percent')) db.exec('ALTER TABLE glass_types ADD COLUMN gst_percent REAL NOT NULL DEFAULT 18');
+  for (const [name, type] of [
+    ['revises_id', 'INTEGER'], ['superseded_by', 'INTEGER'],
+    ['invoice_number', 'TEXT'], ['invoice_date', 'TEXT'], ['invoice_state_code', 'TEXT'],
+    ['invoice_fy', 'TEXT'], ['invoice_seq', 'INTEGER'], ['invoice_business_json', 'TEXT'],
+  ]) {
+    if (!hasColumn('bills', name)) db.exec(`ALTER TABLE bills ADD COLUMN ${name} ${type}`);
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bills_invoice_number ON bills(invoice_number) WHERE invoice_number IS NOT NULL');
   if (!hasColumn('users', 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   if (!hasColumn('bills', 'order_accepted_on')) db.exec('ALTER TABLE bills ADD COLUMN order_accepted_on TEXT');
   if (!hasColumn('bills', 'lost_reason')) db.exec("ALTER TABLE bills ADD COLUMN lost_reason TEXT NOT NULL DEFAULT ''");
