@@ -608,3 +608,14 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 @media (max-width:860px){.who #themeBtn{display:none}}
 .sheet-panel .sheet-theme{color:var(--ink);border-top:1px solid var(--line);border-radius:0;margin-top:4px}
 .sheet-theme svg{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* On short screens the menu scrolls, so the profile, theme and Sign out always stay visible */
+@media (min-width:861px){
+  .side nav{min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+  .who{flex:none}
+}
+@media (min-width:861px) and (max-height:760px){
+  .side{gap:12px;padding:14px 12px}
+  .side nav{gap:2px}
+  .side nav a{padding:8px 12px}
+}
