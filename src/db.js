@@ -120,6 +120,16 @@ function createSchema(db) {
       created_by INTEGER NOT NULL REFERENCES users(id),
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS vendor_bills (
+      id INTEGER PRIMARY KEY,
+      bill_id INTEGER NOT NULL REFERENCES bills(id),
+      date TEXT NOT NULL,
+      vendor TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY,
       date TEXT NOT NULL,
@@ -164,6 +174,8 @@ function createSchema(db) {
     if (!hasColumn('bills', name)) db.exec(`ALTER TABLE bills ADD COLUMN ${name} ${type}`);
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bills_invoice_number ON bills(invoice_number) WHERE invoice_number IS NOT NULL');
+  if (!hasColumn('bills', 'project_status')) db.exec("ALTER TABLE bills ADD COLUMN project_status TEXT NOT NULL DEFAULT 'in_progress'");
+  if (!hasColumn('bills', 'completed_on')) db.exec('ALTER TABLE bills ADD COLUMN completed_on TEXT');
   if (!hasColumn('users', 'active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   if (!hasColumn('bills', 'order_accepted_on')) db.exec('ALTER TABLE bills ADD COLUMN order_accepted_on TEXT');
   if (!hasColumn('bills', 'lost_reason')) db.exec("ALTER TABLE bills ADD COLUMN lost_reason TEXT NOT NULL DEFAULT ''");

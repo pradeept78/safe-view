@@ -446,3 +446,29 @@ tr.add-heading td{padding-top:20px;font-size:13px;font-weight:800;color:var(--in
 .grid3-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (min-width:1500px){.grid3-cards{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:640px){.grid3-cards{grid-template-columns:minmax(0,1fr)}}
+
+/* Compact entry forms: one row on computers, for quick repeat entry */
+.label-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.label-row .link{padding:0;margin:0;font-size:12px;font-weight:700}
+@media (min-width:1000px){
+  .entry{grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px;margin-top:12px;padding-top:12px}
+  .entry input:not([type=checkbox]),.entry select{min-height:40px;padding-top:7px;padding-bottom:7px;font-size:14px}
+  .entry .btn{height:40px;min-height:40px;padding:0 12px;font-size:13px;white-space:nowrap}
+  .order input{min-height:40px}
+  .order .btn{height:40px}
+}
+@media (max-width:999px){
+  .label-row .link{min-height:36px;padding:0 2px;font-size:13px}
+  .entry .label-row{min-height:36px}
+}
+
+/* Project status */
+.head-actions{display:flex;align-items:center;gap:10px}
+.dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px;align-items:end}
+.dates .order{margin:0}
+.dates .order p{align-self:center}
+.scroll table.compact td[data-label="Vendors"]{display:none}
+@media (max-width:760px){.dates{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){
+  .scroll table.compact td[data-label="Profit"]{grid-area:3/1/4/3}
+}

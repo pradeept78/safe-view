@@ -59,7 +59,8 @@ test('an empty business shows zeros', async () => {
   const admin = await login('admin');
   const { body } = await call(admin, 'GET', '/api/overview');
   assert.equal(body.sales, 0);
-  assert.equal(body.profit, 0);
+  assert.equal(body.confirmedProfit, 0);
+  assert.equal(body.expectedProfit, 0);
   assert.equal(body.recoveredPercent, 0);
   assert.equal(body.months.length, 12);
 });
@@ -82,9 +83,11 @@ test('totals use won orders before GST, and count all money in and out', async (
   assert.equal(body.toCollect, 3800);
   assert.equal(body.vendorPaid, 4000);
   assert.equal(body.expenses, 1000);
-  assert.equal(body.profit, 5000);
+  assert.equal(body.expectedProfit, 6000);
+  assert.equal(body.confirmedProfit, 0);
+  assert.equal(body.afterExpenses, -1000);
   assert.equal(body.investment, 50000);
-  assert.equal(body.recoveredPercent, 10);
+  assert.equal(body.recoveredPercent, 0);
   assert.equal(body.won, 1);
   assert.equal(body.lost, 1);
   assert.equal(body.waiting, 1);
@@ -92,7 +95,14 @@ test('totals use won orders before GST, and count all money in and out', async (
   const current = body.months[11];
   assert.equal(current.month, month);
   assert.equal(current.sales, 10000);
-  assert.equal(current.profit, 5000);
+  assert.equal(current.confirmedProfit, 0);
+
+  await call(admin, 'PUT', `/api/projects/${won}/status`, { status: 'completed', completedOn: `${month}-05` });
+  const done = (await call(admin, 'GET', '/api/overview')).body;
+  assert.equal(done.confirmedProfit, 6000);
+  assert.equal(done.afterExpenses, 5000);
+  assert.equal(done.recoveredPercent, 10);
+  assert.equal(done.months[11].confirmedProfit, 6000);
 });
 
 test('a revised bill counts once, at its new value', async () => {

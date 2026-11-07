@@ -38,12 +38,20 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
     SELECT v.*, u.name AS created_by_name FROM vendor_payments v JOIN users u ON u.id = v.created_by
     WHERE v.bill_id = ? ORDER BY v.date, v.id`).all(id);
 
+  const vendorBillsOf = (id) => db.prepare(`
+    SELECT v.*, u.name AS created_by_name FROM vendor_bills v JOIN users u ON u.id = v.created_by
+    WHERE v.bill_id = ? ORDER BY v.date, v.id`).all(id);
+
   function summarise(bill) {
     const totals = JSON.parse(bill.totals_json);
     const payments = paymentsOf(bill.id);
     const vendorPayments = vendorPaymentsOf(bill.id);
+    const vendorBills = vendorBillsOf(bill.id);
     const received = sum(payments);
     const vendorPaid = sum(vendorPayments);
+    const vendorBilled = sum(vendorBills);
+    // A bill shows what is owed before it is paid. Payments with no bill still count as costs.
+    const vendorCost = Math.max(vendorBilled, vendorPaid);
     return {
       id: bill.id,
       number: bill.number,
@@ -51,6 +59,8 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
       customerPhone: bill.customer_phone,
       approvedAt: bill.approved_at,
       acceptedOn: bill.order_accepted_on,
+      status: bill.project_status,
+      completedOn: bill.completed_on,
       orderValue: totals.basic,
       gst: round2(totals.cgst + totals.sgst),
       grandTotal: totals.grandTotal,
@@ -59,17 +69,21 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
       online: sum(payments.filter((p) => p.method === 'online')),
       balance: round2(totals.grandTotal - received),
       vendorPaid,
+      vendorBilled,
+      vendorCost,
+      vendorDue: round2(Math.max(vendorBilled - vendorPaid, 0)),
       // GST belongs to the government, so profit is worked out on the amount before tax.
-      profit: round2(totals.basic - vendorPaid),
+      profit: round2(totals.basic - vendorCost),
       payments,
       vendorPayments,
+      vendorBills,
     };
   }
 
   app.get('/api/projects', requireLogin, (req, res) => {
     const bills = db.prepare("SELECT * FROM bills WHERE status = 'approved' AND quote_status = 'won' AND superseded_by IS NULL ORDER BY id DESC").all();
     res.json(bills.map((bill) => {
-      const { payments, vendorPayments, ...summary } = summarise(bill);
+      const { payments, vendorPayments, vendorBills, ...summary } = summarise(bill);
       return summary;
     }));
   });
@@ -81,6 +95,33 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
     const acceptedOn = req.body.acceptedOn ? readDate(req.body.acceptedOn) : null;
     db.prepare('UPDATE bills SET order_accepted_on = ? WHERE id = ?').run(acceptedOn, bill.id);
     res.json({ ok: true });
+  });
+
+  app.put('/api/projects/:id/status', requireLogin, (req, res) => {
+    const bill = findProject(req.params.id);
+    if (req.body.status === 'completed') {
+      if (!isValidDate(req.body.completedOn)) throw new Problem(400, 'Enter the date the project finished');
+      db.prepare("UPDATE bills SET project_status = 'completed', completed_on = ? WHERE id = ?").run(req.body.completedOn, bill.id);
+    } else if (req.body.status === 'in_progress') {
+      db.prepare("UPDATE bills SET project_status = 'in_progress', completed_on = NULL WHERE id = ?").run(bill.id);
+    } else {
+      throw new Problem(400, 'Unknown project status');
+    }
+    res.json({ ok: true });
+  });
+
+  app.post('/api/projects/:id/vendor-bills', requireLogin, (req, res) => {
+    const bill = findProject(req.params.id);
+    if (bill.project_status === 'completed') throw new Problem(409, 'Reopen this project to add a late vendor bill');
+    const vendor = text(req.body.vendor, 120);
+    if (!vendor) throw new Problem(400, 'Enter the vendor name');
+    const amount = round2(Number(req.body.amount));
+    if (!Number.isFinite(amount) || amount <= 0) throw new Problem(400, 'Enter an amount more than zero');
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO vendor_bills (bill_id, date, vendor, description, amount, created_by, created_at)
+      VALUES (@billId, @date, @vendor, @description, @amount, @createdBy, @time)
+    `).run({ billId: bill.id, date: readDate(req.body.date), vendor, description: text(req.body.description, 200), amount, createdBy: req.user.id, time: now() });
+    res.status(201).json({ id: lastInsertRowid });
   });
 
   app.post('/api/projects/:id/payments', requireLogin, (req, res) => {
@@ -170,7 +211,7 @@ function registerAccountRoutes(app, { db, requireLogin, requireAdmin, Problem, t
   });
 
   // Mistakes are removed by the admin only, so a partner cannot quietly change the books.
-  for (const [path, table] of [['payments', 'payments'], ['vendor-payments', 'vendor_payments'], ['expenses', 'expenses'], ['investments', 'investments']]) {
+  for (const [path, table] of [['payments', 'payments'], ['vendor-payments', 'vendor_payments'], ['vendor-bills', 'vendor_bills'], ['expenses', 'expenses'], ['investments', 'investments']]) {
     app.delete(`/api/${path}/:id`, requireLogin, requireAdmin, (req, res) => {
       const entry = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(Number(req.params.id));
       if (!entry) throw new Problem(404, 'Entry not found');

@@ -400,10 +400,11 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
     db.prepare("UPDATE settings SET value = ? WHERE key = 'next_bill_number'").run(String(next + 1));
     if (original) {
       // The corrected bill takes over the order, so payments and costs follow it.
-      db.prepare('UPDATE bills SET quote_status = ?, order_accepted_on = ?, follow_up_on = ? WHERE id = ?')
-        .run(original.quote_status, original.order_accepted_on, original.follow_up_on, row.id);
+      db.prepare('UPDATE bills SET quote_status = ?, order_accepted_on = ?, follow_up_on = ?, project_status = ?, completed_on = ? WHERE id = ?')
+        .run(original.quote_status, original.order_accepted_on, original.follow_up_on, original.project_status, original.completed_on, row.id);
       db.prepare('UPDATE payments SET bill_id = ? WHERE bill_id = ?').run(row.id, original.id);
       db.prepare('UPDATE vendor_payments SET bill_id = ? WHERE bill_id = ?').run(row.id, original.id);
+      db.prepare('UPDATE vendor_bills SET bill_id = ? WHERE bill_id = ?').run(row.id, original.id);
       db.prepare('UPDATE bills SET superseded_by = ?, follow_up_on = NULL WHERE id = ?').run(row.id, original.id);
     }
   });
