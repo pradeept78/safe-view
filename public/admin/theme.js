@@ -1,17 +1,11 @@
-// Runs before the page is drawn, so a dark theme never flashes white.
-// Follows the phone or computer setting until someone picks a theme.
+// Runs before the page is drawn, so the theme never flashes the wrong colours.
+// Dark is the default until someone picks a theme on this device.
 (function setUpTheme() {
   const KEY = 'safe-view-theme';
-  const system = window.matchMedia('(prefers-color-scheme: dark)');
-  const read = () => {
-    try { return localStorage.getItem(KEY); } catch { return null; }
-  };
   const apply = (theme) => { document.documentElement.dataset.theme = theme; };
-  const saved = read();
-  apply(saved === 'dark' || saved === 'light' ? saved : (system.matches ? 'dark' : 'light'));
-  system.addEventListener('change', (event) => {
-    if (!read()) apply(event.matches ? 'dark' : 'light');
-  });
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch { /* Private windows can block saved choices. */ }
+  apply(saved === 'light' ? 'light' : 'dark');
   window.toggleTheme = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     apply(next);
