@@ -75,6 +75,11 @@ The Activity page shows the admin who did what. It records actions, never passwo
 - The admin creates a tax invoice from a won order. Numbers look like SV/26-27/00001 and restart each financial year.
 - A tax invoice locks the order. Have your accountant confirm the format before using it.
 
+## Overview
+
+The Overview page shows total sales, profit and investment, with monthly graphs. Sales and profit leave out GST.
+Profit is won orders minus vendor payments and shop expenses.
+
 ## How money tracking works
 
 - An approved bill is a quotation waiting for the customer. Mark it as won with the order date, or lost with a reason.
