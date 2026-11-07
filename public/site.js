@@ -46,6 +46,18 @@ const updateNav = () => nav.classList.toggle('solid', window.scrollY > 24);
 window.addEventListener('scroll', updateNav, { passive: true });
 updateNav();
 
+// Phone menu.
+const menuBtn = document.getElementById('menuBtn');
+const setMenu = (open) => {
+  nav.classList.toggle('menu-open', open);
+  menuBtn.setAttribute('aria-expanded', String(open));
+  menuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+};
+menuBtn.addEventListener('click', () => setMenu(!nav.classList.contains('menu-open')));
+document.getElementById('siteMenu').addEventListener('click', (event) => {
+  if (event.target.closest('a')) setMenu(false);
+});
+
 // Sections fade in as they reach the screen.
 const revealed = document.querySelectorAll('.reveal');
 if ('IntersectionObserver' in window) {
