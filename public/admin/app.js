@@ -6,6 +6,9 @@ const money = (value) => `${value < 0 ? '-' : ''}₹${Math.abs(Number(value || 0
 const when = (iso) => new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 const STATUS = { draft: 'Draft', pending: 'Waiting for admin', approved: 'Approved' };
 const badge = (status) => `<span class="badge ${esc(status)}">${esc(STATUS[status] || status)}</span>`;
+const QUOTE_STATUS = { waiting: 'Waiting for customer', won: 'Won', lost: 'Lost' };
+const quoteBadge = (status) => `<span class="badge q-${esc(status)}">${esc(QUOTE_STATUS[status] || status)}</span>`;
+const billBadge = (bill) => (bill.status === 'approved' ? quoteBadge(bill.quoteStatus) : badge(bill.status));
 
 async function api(url, method = 'GET', body) {
   const res = await fetch(url, {
@@ -25,7 +28,12 @@ async function api(url, method = 'GET', body) {
 const ICONS = {
   bills: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
   enquiries: '<path d="M4 5h16v11H9l-5 4zM8 10h8"/>',
+  quotations: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13l2 2 4-4"/>',
+  projects: '<path d="M3 7h7l2 3h9v10H3zM3 7V4h6l2 3"/>',
+  accounts: '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>',
+  investment: '<path d="M12 3v18M17 7c-1-2-3-3-5-3-3 0-5 1.500-5 4s2 3.500 5 4 5 1.500 5 4-2 4-5 4c-2 0-4-1-5-3"/>',
   rates: '<path d="M5 3h14v18H5zM12 3v18M5 12h14"/>',
+  users: '<circle cx="9" cy="8" r="3.500"/><path d="M2.500 20c.7-4 3.200-6 6.500-6s5.800 2 6.500 6M16 5a3.500 3.500 0 0 1 0 6.500M18 14c2 .8 3.200 2.800 3.500 6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/>',
 };
@@ -36,7 +44,7 @@ function shell(active, content) {
     <div class="layout">
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
-        <nav aria-label="Dashboard">${link('bills', 'Bills')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
+        <nav aria-label="Dashboard">${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <span class="avatar" aria-hidden="true">${esc(me.name.charAt(0).toUpperCase())}</span>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
@@ -93,7 +101,7 @@ async function billsPage() {
     .reduce((total, b) => total + b.totals.grandTotal, 0);
   const rows = bills.map((b) => `
     <tr class="link" data-id="${b.id}">
-      <td>${esc(b.number || `Draft ${b.id}`)}</td><td>${esc(b.customerName)}</td><td>${badge(b.status)}</td>
+      <td>${esc(b.number || `Draft ${b.id}`)}</td><td>${esc(b.customerName)}</td><td>${billBadge(b)}</td>
       <td>${esc(b.preparedBy)}</td><td class="n">${money(b.totals.grandTotal)}</td>
     </tr>`).join('');
   shell('bills', `
@@ -137,7 +145,7 @@ async function billPage(id) {
   shell('bills', `
     <div class="head">
       <h1>${bill ? esc(bill.number || `Draft ${bill.id}`) : 'New Bill'}</h1>
-      ${bill ? badge(bill.status) : ''}
+      ${bill ? billBadge(bill) : ''}
     </div>
     <div id="msg"></div>
     ${bill?.returnNote ? `<div class="alert warn">Sent back by admin: ${esc(bill.returnNote)}</div>` : ''}
@@ -168,6 +176,7 @@ async function billPage(id) {
       ${editable ? '<p style="margin-bottom:0"><button class="btn small" id="addExtra">Add charge</button></p>' : ''}
     </div>
     <div class="card"><div class="totals" id="totals"></div></div>
+    <div id="decision"></div>
     ${bill ? `<p class="muted">Prepared by ${esc(bill.preparedBy)}${bill.checkedBy ? ` · Checked by ${esc(bill.checkedBy)}` : ''}</p>` : ''}
     <div class="acts" id="acts"></div>`);
 
@@ -324,7 +333,8 @@ async function billPage(id) {
     acts.append(button);
   });
   if (bill?.status === 'approved') {
-    acts.insertAdjacentHTML('beforeend', `<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
+    acts.insertAdjacentHTML('beforeend', `${bill.quoteStatus === 'won' ? `<a class="btn" href="#/project/${bill.id}">Order &amp; Payments</a>` : ''}<a class="btn go" href="/print/${bill.id}" target="_blank" rel="noopener">Print Bill</a>`);
+    await drawDecision(bill);
   } else if (bill?.status === 'pending' && !isAdmin) {
     acts.innerHTML = '<p class="muted">Waiting for the admin to approve this bill.</p>';
   }
@@ -499,6 +509,81 @@ async function settingsPage() {
   };
 }
 
+// ----- Users -----
+async function usersPage() {
+  const users = await api('/api/users');
+  const row = (u) => `
+    <tr data-id="${u.id}">
+      <td><input data-k="name" aria-label="Name" style="min-width:170px" value="${esc(u.name)}" maxlength="80"></td>
+      <td>${esc(u.username)}${u.id === me.id ? ' <span class="muted">(you)</span>' : ''}</td>
+      <td><select data-k="role" aria-label="Role" style="min-width:110px"><option value="partner" ${u.role === 'partner' ? 'selected' : ''}>Partner</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option></select></td>
+      <td><label class="check"><input type="checkbox" data-k="active" ${u.active ? 'checked' : ''}> Can sign in</label></td>
+      <td style="white-space:nowrap"><button class="btn small" data-save>Save</button> <button class="btn small" data-password>Reset Password</button></td>
+    </tr>`;
+  shell('users', `
+    <div class="head"><h1>Users</h1></div>
+    <div id="msg"></div>
+    <div class="card scroll">
+      <table class="lines"><tr><th>Name</th><th>Username</th><th>Role</th><th>Access</th><th></th></tr>${users.map(row).join('')}</table>
+      <p class="muted" style="margin-bottom:0">Admins can approve bills and manage users. Partners can make bills and add entries. To remove someone, untick Can sign in, because their name stays on past bills.</p>
+    </div>
+    <form class="card" id="add">
+      <h2>Add a user</h2>
+      <div class="entry" style="margin:0;padding:0;border:0">
+        <label>Name<input name="name" maxlength="80" required></label>
+        <label>Username<input name="username" autocapitalize="none" autocomplete="off" maxlength="40" required></label>
+        <label>Role<select name="role"><option value="partner">Partner</option><option value="admin">Admin</option></select></label>
+        <label>First password (at least 8 characters)<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="btn main">Add User</button>
+      </div>
+    </form>`);
+  document.getElementById('add').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      await api('/api/users', 'POST', Object.fromEntries(new FormData(event.target)));
+      await usersPage();
+      showAlert('msg', 'User added. Ask them to change their password under My Account.', 'good');
+    } catch (error) {
+      showAlert('msg', error.message);
+    }
+    window.scrollTo(0, 0);
+  };
+  root.querySelectorAll('tr[data-id]').forEach((tr) => {
+    const { id } = tr.dataset;
+    tr.querySelector('[data-save]').onclick = async () => {
+      try {
+        const saved = await api(`/api/users/${id}`, 'PUT', {
+          name: tr.querySelector('[data-k=name]').value,
+          role: tr.querySelector('[data-k=role]').value,
+          active: tr.querySelector('[data-k=active]').checked,
+        });
+        if (saved.id === me.id) me = { ...me, name: saved.name, role: saved.role };
+        if (me.role !== 'admin') return route();
+        await usersPage();
+        showAlert('msg', 'Saved', 'good');
+      } catch (error) {
+        showAlert('msg', error.message);
+      }
+      window.scrollTo(0, 0);
+    };
+    tr.querySelector('[data-password]').onclick = async () => {
+      const newPassword = prompt('New password, at least 8 characters. Share it privately and ask them to change it.');
+      if (newPassword === null) return;
+      try {
+        await api(`/api/users/${id}/password`, 'POST', { newPassword });
+        if (Number(id) === me.id) {
+          me = null;
+          return renderLogin();
+        }
+        showAlert('msg', 'Password reset. That user has been signed out.', 'good');
+      } catch (error) {
+        showAlert('msg', error.message);
+      }
+      window.scrollTo(0, 0);
+    };
+  });
+}
+
 // ----- My account -----
 function accountPage() {
   shell('account', `
@@ -537,14 +622,380 @@ function accountPage() {
   };
 }
 
+// ----- Customer decision on an approved bill -----
+async function drawDecision(bill) {
+  const box = document.getElementById('decision');
+  const reasons = bill.quoteStatus === 'waiting' ? await api('/api/quotation-reasons') : [];
+  const send = async (path, body) => {
+    try {
+      await api(`/api/quotations/${bill.id}/${path}`, 'PUT', body);
+      route();
+    } catch (error) {
+      showAlert('msg', error.message);
+      window.scrollTo(0, 0);
+    }
+  };
+  const fields = (form) => Object.fromEntries(new FormData(form));
+
+  if (bill.quoteStatus === 'waiting') {
+    box.innerHTML = `
+      <div class="card">
+        <h2>Customer decision</h2>
+        <form class="order" id="followUp">
+          <label>Follow up on<input type="date" name="followUpOn" value="${esc(bill.followUpOn || '')}"></label>
+          <button class="btn">Save Follow-up</button>
+        </form>
+        <div class="split decide">
+          <form class="stack won-box" id="won">
+            <h2>Order won</h2>
+            <label>Order accepted on<input type="date" name="acceptedOn" value="${today()}" required></label>
+            <button class="btn go">Mark as Won</button>
+          </form>
+          <form class="stack lost-box" id="lost">
+            <h2>Order lost</h2>
+            <label>Why was it lost?<select name="reason" required><option value="">Choose a reason</option>${reasons.map((r) => `<option>${esc(r)}</option>`).join('')}</select></label>
+            <label>Note<input name="note" maxlength="300" placeholder="Like: competitor quoted ₹620 per sq m"></label>
+            <button class="btn danger">Mark as Lost</button>
+          </form>
+        </div>
+      </div>`;
+    document.getElementById('followUp').onsubmit = (event) => { event.preventDefault(); send('follow-up', fields(event.target)); };
+    document.getElementById('won').onsubmit = (event) => { event.preventDefault(); send('won', fields(event.target)); };
+    document.getElementById('lost').onsubmit = (event) => { event.preventDefault(); send('lost', fields(event.target)); };
+    return;
+  }
+
+  const detail = bill.quoteStatus === 'won'
+    ? `Order accepted on ${shortDate(bill.acceptedOn)}.`
+    : `Lost: ${esc(bill.lostReason)}${bill.lostNote ? `. ${esc(bill.lostNote)}` : ''}`;
+  box.innerHTML = `
+    <div class="card decided">
+      <div><h2>Customer decision</h2><p class="muted" style="margin:0">${detail}</p></div>
+      <button class="btn" id="reopen">Reopen Quotation</button>
+    </div>`;
+  document.getElementById('reopen').onclick = () => {
+    if (confirm('Reopen this quotation? It will go back to waiting for the customer.')) send('reopen');
+  };
+}
+
+// ----- Quotation report -----
+const monthStart = () => `${today().slice(0, 7)}-01`;
+const report = { from: null, to: null, status: 'all' };
+
+async function quotationsPage() {
+  report.from = report.from || monthStart();
+  report.to = report.to || today();
+  const q = await api(`/api/quotations?from=${encodeURIComponent(report.from)}&to=${encodeURIComponent(report.to)}`);
+  const shown = report.status === 'all' ? q.quotations : q.quotations.filter((x) => x.status === report.status);
+  const rows = shown.map((x) => `
+    <tr class="link" data-id="${x.id}">
+      <td>${esc(x.number)}</td><td>${esc(x.customerName)}</td><td>${shortDate(x.sentOn)}</td><td>${quoteBadge(x.status)}</td>
+      <td>${esc(x.lostReason)}${x.lostNote ? `<div class="muted">${esc(x.lostNote)}</div>` : ''}</td><td class="n">${money(x.value)}</td>
+    </tr>`).join('');
+  const followRows = q.followUps.map((x) => `
+    <tr class="link" data-id="${x.id}">
+      <td class="${x.followUpOn <= today() ? 'loss' : ''}">${shortDate(x.followUpOn)}</td><td>${esc(x.number)}</td><td>${esc(x.customerName)}</td>
+      <td>${x.customerPhone ? `<a href="tel:${esc(x.customerPhone.replace(/[^+\d]/g, ''))}">${esc(x.customerPhone)}</a>` : ''}</td><td class="n">${money(x.value)}</td>
+    </tr>`).join('');
+  const biggest = Math.max(1, ...q.lostReasons.map((r) => r.count));
+  shell('quotations', `
+    <div class="head">
+      <h1>Quotations</h1>
+      <form class="range" id="range">
+        <label>From<input type="date" name="from" value="${esc(report.from)}" required></label>
+        <label>To<input type="date" name="to" value="${esc(report.to)}" required></label>
+        <button class="btn">Show</button>
+      </form>
+    </div>
+    <div id="msg"></div>
+    <div class="stats">
+      ${stat('Win rate', q.winRate === null ? 'No results yet' : `${q.winRate}%`, true)}
+      ${stat('Quotations sent', q.sent)}
+      ${stat('Won', q.won)}
+      ${stat('Lost', q.lost)}
+    </div>
+    <div class="card">
+      <div class="split">
+        <div class="totals plain">
+          <h2>Value before GST</h2>
+          <div><span>Won</span><span>${money(q.valueWon)}</span></div>
+          <div><span>Lost</span><span>${money(q.valueLost)}</span></div>
+          <div><span>Waiting (${q.waiting})</span><span>${money(q.valueWaiting)}</span></div>
+        </div>
+        <div>
+          <h2>Why orders were lost</h2>
+          ${q.lostReasons.map((r) => `
+            <div class="reason">
+              <div class="reason-top"><span>${esc(r.reason)}</span><span>${r.count} · ${money(r.value)}</span></div>
+              <div class="bar"><span style="width:${Math.round((r.count / biggest) * 100)}%"></span></div>
+            </div>`).join('') || '<p class="muted">No lost orders in these dates.</p>'}
+        </div>
+      </div>
+      <p class="muted" style="margin-bottom:0">Win rate is won ÷ (won + lost). Quotations still waiting are not counted. Dates use the day each bill was approved.</p>
+    </div>
+    ${q.followUps.length ? `<div class="card scroll">
+      <h2>Follow-ups</h2>
+      <table><tr><th>Call on</th><th>Bill</th><th>Customer</th><th>Phone</th><th class="n">Value</th></tr>${followRows}</table>
+    </div>` : ''}
+    <div class="card">
+      <div class="head" style="margin-bottom:10px">
+        <h2 style="margin:0">All quotations</h2>
+        <select id="status" aria-label="Show status" style="max-width:220px;margin:0">
+          ${[['all', 'All'], ['waiting', 'Waiting for customer'], ['won', 'Won'], ['lost', 'Lost']].map(([value, label]) => `<option value="${value}" ${report.status === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      ${shown.length ? `<div class="scroll"><table><tr><th>Bill</th><th>Customer</th><th>Sent</th><th>Status</th><th>Reason</th><th class="n">Value</th></tr>${rows}</table></div>` : '<p class="muted">No quotations to show. Approved bills appear here.</p>'}
+    </div>`);
+  document.getElementById('range').onsubmit = (event) => {
+    event.preventDefault();
+    Object.assign(report, Object.fromEntries(new FormData(event.target)));
+    quotationsPage();
+  };
+  document.getElementById('status').onchange = (event) => { report.status = event.target.value; quotationsPage(); };
+  root.querySelectorAll('tr.link').forEach((row) => {
+    row.onclick = (event) => { if (!event.target.closest('a')) location.hash = `#/bill/${row.dataset.id}`; };
+  });
+}
+
+// ----- Shared pieces for money pages -----
+const today = () => new Date().toLocaleDateString('en-CA');
+const shortDate = (date) => (date ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '–');
+const methodBadge = (method) => `<span class="badge ${method === 'cash' ? 'cash' : 'online'}">${method === 'cash' ? 'Cash' : 'Online'}</span>`;
+const methodSelect = '<label>Paid by<select name="method"><option value="cash">Cash</option><option value="online">Online</option></select></label>';
+const removeButton = (kind, id) => (me.role === 'admin' ? `<button class="btn small danger" data-delete="${kind}" data-id="${id}" aria-label="Delete entry">×</button>` : '');
+const stat = (label, value, hot) => `<div class="stat ${hot ? 'hot' : ''}"><small>${esc(label)}</small><b>${esc(value)}</b></div>`;
+
+// Connects add forms and delete buttons on a money page, then redraws it.
+function wireMoneyPage(redraw) {
+  root.querySelectorAll('form[data-post]').forEach((form) => {
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      try {
+        await api(form.dataset.post, 'POST', Object.fromEntries(new FormData(form)));
+        await redraw();
+        showAlert('msg', 'Saved', 'good');
+      } catch (error) {
+        showAlert('msg', error.message);
+      }
+      window.scrollTo(0, 0);
+    };
+  });
+  root.querySelectorAll('[data-delete]').forEach((button) => {
+    button.onclick = async () => {
+      if (!confirm('Delete this entry? This cannot be undone.')) return;
+      try {
+        await api(`/api/${button.dataset.delete}/${button.dataset.id}`, 'DELETE');
+        await redraw();
+      } catch (error) {
+        showAlert('msg', error.message);
+      }
+    };
+  });
+}
+
+// ----- Projects -----
+async function projectsPage() {
+  const projects = await api('/api/projects');
+  const total = (key) => projects.reduce((sum, project) => sum + project[key], 0);
+  const rows = projects.map((p) => `
+    <tr class="link" data-id="${p.id}">
+      <td>${esc(p.number)}</td><td>${esc(p.customerName)}</td><td>${shortDate(p.acceptedOn)}</td>
+      <td class="n">${money(p.grandTotal)}</td><td class="n">${money(p.received)}</td><td class="n">${money(p.balance)}</td>
+      <td class="n">${money(p.vendorPaid)}</td><td class="n ${p.profit < 0 ? 'loss' : 'gain'}">${money(p.profit)}</td>
+    </tr>`).join('');
+  shell('projects', `
+    <div class="head"><h1>Projects</h1></div>
+    <div class="stats">
+      ${stat('Still to collect', money(total('balance')), true)}
+      ${stat('Received', money(total('received')))}
+      ${stat('Paid to vendors', money(total('vendorPaid')))}
+      ${stat('Profit before shop expenses', money(total('profit')))}
+    </div>
+    <div class="card scroll">
+      ${projects.length ? `<table><tr><th>Bill</th><th>Customer</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Vendors</th><th class="n">Profit</th></tr>${rows}</table>`
+    : '<p class="muted">Quotations appear here as projects once they are marked as won.</p>'}
+    </div>`);
+  root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
+}
+
+async function projectPage(id) {
+  const p = await api(`/api/projects/${id}`);
+  const paymentRows = p.payments.map((x) => `
+    <tr><td>${shortDate(x.date)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.reference)}</td><td>${esc(x.note)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('payments', x.id)}</td></tr>`).join('');
+  const vendorRows = p.vendorPayments.map((x) => `
+    <tr><td>${shortDate(x.date)}</td><td>${esc(x.vendor)}</td><td>${esc(x.description)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('vendor-payments', x.id)}</td></tr>`).join('');
+  shell('projects', `
+    <div class="head">
+      <div><h1>${esc(p.number)}</h1><p class="muted" style="margin:4px 0 0">${esc(p.customerName)}</p></div>
+      <a class="btn" href="#/bill/${p.id}">View Bill</a>
+    </div>
+    <div id="msg"></div>
+    <div class="stats">
+      ${stat('Balance to collect', money(p.balance), true)}
+      ${stat('Received', money(p.received))}
+      ${stat('Paid to vendors', money(p.vendorPaid))}
+      ${stat('Profit', money(p.profit))}
+    </div>
+    <div class="card">
+      <div class="split">
+        <div class="totals plain">
+          <div><span>Order value before GST</span><span>${money(p.orderValue)}</span></div>
+          <div><span>GST</span><span>${money(p.gst)}</span></div>
+          <div class="strong"><span>Bill total</span><span>${money(p.grandTotal)}</span></div>
+        </div>
+        <div class="totals plain">
+          <div><span>Received in cash</span><span>${money(p.cash)}</span></div>
+          <div><span>Received online</span><span>${money(p.online)}</span></div>
+          <div class="strong"><span>Profit (order value − vendors)</span><span>${money(p.profit)}</span></div>
+        </div>
+      </div>
+    </div>
+    <form class="card order" id="order">
+      <label>Order accepted on<input type="date" name="acceptedOn" value="${esc(p.acceptedOn || '')}"></label>
+      <button class="btn">Save Date</button>
+    </form>
+    <div class="card">
+      <h2>Customer payments</h2>
+      ${p.payments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Paid by</th><th>Reference</th><th>Note</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${paymentRows}</table></div>` : '<p class="muted">No payments yet.</p>'}
+      ${p.balance > 0 ? `<form class="entry" data-post="/api/projects/${p.id}/payments">
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Amount<input type="number" name="amount" min="0.01" max="${p.balance}" step="0.01" inputmode="decimal" required></label>
+        ${methodSelect}
+        <label>UPI or bank reference<input name="reference" maxlength="80"></label>
+        <label>Note<input name="note" maxlength="300"></label>
+        <button class="btn main">Add Payment</button>
+      </form>` : '<p class="alert good">This bill is fully paid.</p>'}
+    </div>
+    <div class="card">
+      <h2>Vendor payments</h2>
+      ${p.vendorPayments.length ? `<div class="scroll"><table><tr><th>Date</th><th>Vendor</th><th>For</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${vendorRows}</table></div>` : '<p class="muted">No vendor payments yet.</p>'}
+      <form class="entry" data-post="/api/projects/${p.id}/vendor-payments">
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Vendor<input name="vendor" maxlength="120" required></label>
+        <label>Paid for<input name="description" maxlength="200"></label>
+        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        ${methodSelect}
+        <button class="btn main">Add Vendor Payment</button>
+      </form>
+    </div>`);
+  document.getElementById('order').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/api/projects/${id}/order`, 'PUT', Object.fromEntries(new FormData(event.target)));
+      showAlert('msg', 'Order date saved', 'good');
+    } catch (error) {
+      showAlert('msg', error.message);
+    }
+    window.scrollTo(0, 0);
+  };
+  wireMoneyPage(() => projectPage(id));
+}
+
+// ----- Monthly accounts -----
+const EXPENSE_CATEGORIES = ['Rent', 'Salaries', 'Electricity', 'Transport', 'Tools', 'Marketing', 'Other'];
+let chosenMonth = new Date().toLocaleDateString('en-CA').slice(0, 7);
+
+async function accountsPage() {
+  const a = await api(`/api/accounts?month=${encodeURIComponent(chosenMonth)}`);
+  const rows = a.expenses.map((x) => `
+    <tr><td>${shortDate(x.date)}</td><td>${esc(x.category)}</td><td>${esc(x.description)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.created_by_name)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('expenses', x.id)}</td></tr>`).join('');
+  shell('accounts', `
+    <div class="head">
+      <h1>Monthly Accounts</h1>
+      <label class="month">Month<input type="month" id="month" value="${esc(chosenMonth)}"></label>
+    </div>
+    <div id="msg"></div>
+    <div class="stats">
+      ${stat('Left over this month', money(a.leftOver), true)}
+      ${stat('Money in', money(a.moneyIn))}
+      ${stat('Paid to vendors', money(a.vendorPaid))}
+      ${stat('Shop expenses', money(a.expensesTotal))}
+    </div>
+    <div class="card">
+      <div class="split">
+        <div class="totals plain">
+          <h2>Money in</h2>
+          <div><span>Cash</span><span>${money(a.cashIn)}</span></div>
+          <div><span>Online</span><span>${money(a.onlineIn)}</span></div>
+          <div class="strong"><span>Total</span><span>${money(a.moneyIn)}</span></div>
+        </div>
+        <div class="totals plain">
+          <h2>Expenses by category</h2>
+          ${a.byCategory.map((c) => `<div><span>${esc(c.category)}</span><span>${money(c.amount)}</span></div>`).join('') || '<p class="muted">No expenses this month.</p>'}
+        </div>
+      </div>
+      <p class="muted" style="margin-bottom:0">Money in includes GST collected from customers, so left over is not the same as profit.</p>
+    </div>
+    <div class="card">
+      <h2>Shop expenses</h2>
+      ${a.expenses.length ? `<div class="scroll"><table><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
+      <form class="entry" data-post="/api/expenses">
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Category<input name="category" list="categories" maxlength="60" required></label>
+        <datalist id="categories">${EXPENSE_CATEGORIES.map((c) => `<option value="${c}">`).join('')}</datalist>
+        <label>Details<input name="description" maxlength="200"></label>
+        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        ${methodSelect}
+        <button class="btn main">Add Expense</button>
+      </form>
+    </div>`);
+  document.getElementById('month').onchange = (event) => {
+    if (!event.target.value) return;
+    chosenMonth = event.target.value;
+    accountsPage();
+  };
+  wireMoneyPage(accountsPage);
+}
+
+// ----- Investment -----
+async function investmentPage() {
+  const data = await api('/api/investments');
+  const rows = data.entries.map((x) => `
+    <tr><td>${shortDate(x.date)}</td><td>${esc(x.person)}</td><td>${esc(x.paid_for)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.note)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('investments', x.id)}</td></tr>`).join('');
+  shell('investment', `
+    <div class="head"><h1>Shop Investment</h1></div>
+    <div id="msg"></div>
+    <div class="stats">
+      ${stat('Total invested', money(data.total), true)}
+      ${data.byPerson.slice(0, 3).map((p) => stat(p.person, money(p.amount))).join('')}
+    </div>
+    <div class="card">
+      <h2>Paid for</h2>
+      <div class="totals plain wide">
+        ${data.byPurpose.map((p) => `<div><span>${esc(p.paidFor)}</span><span>${money(p.amount)}</span></div>`).join('') || '<p class="muted">Nothing added yet.</p>'}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Investment entries</h2>
+      ${data.entries.length ? `<div class="scroll"><table><tr><th>Date</th><th>Who paid</th><th>Paid for</th><th>Paid by</th><th>Note</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
+      <form class="entry" data-post="/api/investments">
+        <label>Date<input type="date" name="date" value="${today()}" required></label>
+        <label>Who paid<select name="person" required>${data.people.map((name) => `<option>${esc(name)}</option>`).join('')}</select></label>
+        <label>Paid for<input name="paidFor" maxlength="200" list="purposes" required></label>
+        <datalist id="purposes">${data.byPurpose.map((p) => `<option value="${esc(p.paidFor)}">`).join('')}</datalist>
+        <label>Amount<input type="number" name="amount" min="0.01" step="0.01" inputmode="decimal" required></label>
+        ${methodSelect}
+        <label>Note<input name="note" maxlength="300"></label>
+        <button class="btn main">Add Investment</button>
+      </form>
+    </div>`);
+  wireMoneyPage(investmentPage);
+}
+
 async function route() {
   if (!me) return renderLogin();
   const [page, id] = location.hash.replace(/^#\//, '').split('/');
   try {
     if (page === 'bill') await billPage(id);
+    else if (page === 'quotations') await quotationsPage();
+    else if (page === 'projects') await projectsPage();
+    else if (page === 'project') await projectPage(id);
+    else if (page === 'accounts') await accountsPage();
+    else if (page === 'investment') await investmentPage();
     else if (page === 'enquiries') await enquiriesPage();
     else if (page === 'rates') await ratesPage();
     else if (page === 'settings') await settingsPage();
+    else if (page === 'users' && me.role === 'admin') await usersPage();
     else if (page === 'account') accountPage();
     else await billsPage();
   } catch (error) {
