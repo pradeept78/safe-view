@@ -80,7 +80,7 @@ It shows a new password once. Sign in and change it under My Account.
 
 ## Going live
 
-Follow [deploy/AWS-SETUP.md](deploy/AWS-SETUP.md). It covers the server, HTTPS, backups and updates.
+Follow [deploy/DEPLOYMENT-GUIDE.md](deploy/DEPLOYMENT-GUIDE.md). It teaches each step, from your Mac to the live site.
 
 ## Viewing data in MySQL Workbench
 
