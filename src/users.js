@@ -22,6 +22,17 @@ function registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text
     return { name, role: body.role };
   }
 
+  function readUsername(value, ownId = 0) {
+    const username = text(value, 40).toLowerCase();
+    if (!/^[a-z0-9._-]{3,40}$/.test(username)) {
+      throw new Problem(400, 'Username needs at least 3 characters: letters, numbers, dots, dashes or underscores');
+    }
+    if (db.prepare('SELECT 1 FROM users WHERE username = ? AND id <> ?').get(username, ownId)) {
+      throw new Problem(409, 'That username is already taken');
+    }
+    return username;
+  }
+
   function readPassword(value) {
     const password = String(value ?? '');
     if (password.length < MIN_PASSWORD) throw new Problem(400, `Password must have at least ${MIN_PASSWORD} characters`);
@@ -36,13 +47,7 @@ function registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text
 
   app.post('/api/users', requireLogin, requireAdmin, (req, res) => {
     const details = readDetails(req.body);
-    const username = text(req.body.username, 40).toLowerCase();
-    if (!/^[a-z0-9._-]{3,40}$/.test(username)) {
-      throw new Problem(400, 'Username needs at least 3 characters: letters, numbers, dots, dashes or underscores');
-    }
-    if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {
-      throw new Problem(409, 'That username is already taken');
-    }
+    const username = readUsername(req.body.username);
     const { hash, salt } = readPassword(req.body.password);
     const { lastInsertRowid } = db.prepare('INSERT INTO users (username, name, role, pass_hash, salt) VALUES (?, ?, ?, ?, ?)')
       .run(username, details.name, details.role, hash, salt);
@@ -53,13 +58,14 @@ function registerUserRoutes(app, { db, requireLogin, requireAdmin, Problem, text
     const user = findUser(req.params.id);
     const { name, role } = readDetails(req.body);
     const active = req.body.active ? 1 : 0;
+    const username = req.body.username === undefined ? user.username : readUsername(req.body.username, user.id);
 
     if (user.role === 'admin' && user.active && (role !== 'admin' || !active)) {
       const admins = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND active = 1").get().n;
       if (admins <= 1) throw new Problem(400, 'Keep at least one active admin, or nobody could approve bills');
     }
 
-    db.prepare('UPDATE users SET name = ?, role = ?, active = ? WHERE id = ?').run(name, role, active, user.id);
+    db.prepare('UPDATE users SET username = ?, name = ?, role = ?, active = ? WHERE id = ?').run(username, name, role, active, user.id);
     if (!active) endSessions(user.id);
     res.json(publicUser(user.id));
   });

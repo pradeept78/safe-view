@@ -67,6 +67,29 @@ test('the admin edits a name and role, and the new role takes effect', async () 
   assert.equal((await call(session, 'GET', '/api/users')).status, 200);
 });
 
+test('the admin changes a username, and the person signs in with the new one', async () => {
+  const admin = await login('admin');
+  const { body } = await call(admin, 'POST', '/api/users', newUser('oldname'));
+  const session = await login('oldname', 'first-password');
+  const saved = await call(admin, 'PUT', `/api/users/${body.id}`, { username: 'New.Name', name: 'New Person', role: 'partner', active: true });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.username, 'new.name');
+  assert.equal(await login('oldname', 'first-password'), null);
+  assert.ok(await login('new.name', 'first-password'));
+  assert.equal((await call(session, 'GET', '/api/me')).body.username, 'new.name');
+});
+
+test('a username cannot be taken twice or be invalid, and keeping your own is fine', async () => {
+  const admin = await login('admin');
+  const { body } = await call(admin, 'POST', '/api/users', newUser('uniqueone'));
+  const change = (username) => call(admin, 'PUT', `/api/users/${body.id}`, { username, name: 'New Person', role: 'partner', active: true });
+  assert.equal((await change('admin')).status, 409);
+  assert.equal((await change('has space')).status, 400);
+  assert.equal((await change('ab')).status, 400);
+  assert.equal((await change('uniqueone')).status, 200);
+  assert.equal((await call(admin, 'PUT', `/api/users/${body.id}`, { name: 'No Username Sent', role: 'partner', active: true })).body.username, 'uniqueone');
+});
+
 test('turning a user off signs them out and blocks sign-in, and turning on restores it', async () => {
   const admin = await login('admin');
   const { body } = await call(admin, 'POST', '/api/users', newUser('leaver'));

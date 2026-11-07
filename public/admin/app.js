@@ -699,7 +699,7 @@ async function usersPage() {
   const row = (u) => `
     <tr data-id="${u.id}">
       <td><input data-k="name" aria-label="Name" style="min-width:170px" value="${esc(u.name)}" maxlength="80"></td>
-      <td>${esc(u.username)}${u.id === me.id ? ' <span class="muted">(you)</span>' : ''}</td>
+      <td><input data-k="username" aria-label="Username" style="min-width:130px" value="${esc(u.username)}" maxlength="40" autocapitalize="none" autocomplete="off" spellcheck="false"></td>
       <td><select data-k="role" aria-label="Role" style="min-width:110px"><option value="partner" ${u.role === 'partner' ? 'selected' : ''}>Partner</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option></select></td>
       <td><label class="check"><input type="checkbox" data-k="active" ${u.active ? 'checked' : ''}> Can sign in</label></td>
       <td style="white-space:nowrap"><button class="btn small" data-save>Save</button> <button class="btn small" data-password>Reset Password</button></td>
@@ -709,7 +709,7 @@ async function usersPage() {
     <div id="msg"></div>
     <div class="card scroll">
       <table class="lines"><tr><th>Name</th><th>Username</th><th>Role</th><th>Access</th><th></th></tr>${users.map(row).join('')}</table>
-      <p class="muted" style="margin-bottom:0">Admins can approve bills and manage users. Partners can make bills and add entries. To remove someone, untick Can sign in, because their name stays on past bills.</p>
+      <p class="muted" style="margin-bottom:0">Admins can approve bills and manage users. Partners can make bills and add entries. If you change a username, tell that person, because they sign in with the new one. To remove someone, untick Can sign in, because their name stays on past bills.</p>
     </div>
     <form class="card" id="add">
       <h2>Add a user</h2>
@@ -737,11 +737,12 @@ async function usersPage() {
     tr.querySelector('[data-save]').onclick = async () => {
       try {
         const saved = await api(`/api/users/${id}`, 'PUT', {
+          username: tr.querySelector('[data-k=username]').value,
           name: tr.querySelector('[data-k=name]').value,
           role: tr.querySelector('[data-k=role]').value,
           active: tr.querySelector('[data-k=active]').checked,
         });
-        if (saved.id === me.id) me = { ...me, name: saved.name, role: saved.role };
+        if (saved.id === me.id) me = { ...me, username: saved.username, name: saved.name, role: saved.role };
         if (me.role !== 'admin') return route();
         await usersPage();
         showAlert('msg', 'Saved', 'good');

@@ -23,7 +23,7 @@ The first start creates three logins (`admin`, `partner2`, `partner3`) and saves
 
 ## Users
 
-The admin adds people, edits names and roles, resets passwords and turns off access on the Users page.
+The admin adds people, edits names, usernames and roles, resets passwords and turns off access on the Users page.
 Users are turned off rather than deleted, because their names stay on past bills.
 
 ## Installing on a phone
