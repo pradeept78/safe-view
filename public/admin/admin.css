@@ -698,10 +698,36 @@ a.avatar{text-decoration:none}
 @media (max-width:640px){
   /* Bill lines being edited: two boxes per row, so a line takes half the height */
   #lines:not(.fixed-lines) tr[data-i]:not(.sub){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;padding:12px}
-  #lines:not(.fixed-lines) tr[data-i]:not(.sub) td{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:3px;width:auto;min-width:0;padding:0}
+  #lines:not(.fixed-lines) tr[data-i]:not(.sub) td{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;justify-content:flex-start;gap:3px;width:auto;min-width:0;padding:0}
   #lines:not(.fixed-lines) tr[data-i]:not(.sub) td::before{max-width:none}
   #lines:not(.fixed-lines) tr[data-i]:not(.sub) td input,#lines:not(.fixed-lines) tr[data-i]:not(.sub) td select{width:100%;min-width:0!important;margin:0;flex:none;text-align:left}
   #lines:not(.fixed-lines) tr[data-i]:not(.sub) td[data-label="Material"]{grid-column:1/-1}
   #lines .hint{flex:none;white-space:normal;overflow-wrap:anywhere;text-align:left}
-  #lines:not(.fixed-lines) tr[data-i]:not(.sub) td[data-label=""]{grid-column:1/-1;align-items:flex-end}
+  #lines:not(.fixed-lines) tr[data-i]:not(.sub) td[data-label=""]{justify-content:flex-end;align-items:flex-end}
+  #lines:not(.fixed-lines) td[data-area],#lines:not(.fixed-lines) td[data-amount]{justify-content:flex-start;color:var(--ink);font-weight:700;text-align:left}
+  #lines:not(.fixed-lines) td[data-area]::before,#lines:not(.fixed-lines) td[data-amount]::before{font-weight:700}
 }
+
+/* Projects board */
+.head .chips{margin:0}
+.board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.board-column{margin:0;padding:14px 0 6px;--tone:var(--ink)}
+.board-column.blue{--tone:var(--blue-fg)}.board-column.red{--tone:var(--red-fg)}.board-column.amber{--tone:var(--amber-fg)}.board-column.green{--tone:var(--green-fg)}
+.board-head{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:0 14px 12px;border-bottom:1px solid var(--line)}
+.board-head h2{display:flex;align-items:center;gap:7px;margin:0;font-size:14.5px}
+.board-head h2::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--tone)}
+.board-count{padding:1px 7px;border-radius:999px;background:var(--neutral-bg);color:var(--neutral-fg);font-size:12px;font-weight:700}
+.board-head b{flex:0 0 100%;color:var(--tone);font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
+.board-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none}
+.board-row:hover{background:var(--hover)}
+.board-row:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+.board-row span{min-width:0}
+.board-row b,.board-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-row b{font-size:14px;font-weight:700}
+.board-row small{margin-top:1px;color:var(--muted);font-size:12px}
+.board-row em{flex:none;color:var(--tone);font-size:14px;font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+.board-empty{padding:18px 14px;margin:0;font-size:13px}
+.board-more{display:block;width:100%;min-height:42px;padding:0 14px;border:0;background:none;color:var(--ink);font:700 13.5px var(--sans);text-align:left;cursor:pointer}
+.board-more:hover{color:var(--tone)}
+@media (max-width:1239px){.board{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.board{grid-template-columns:minmax(0,1fr)}}
