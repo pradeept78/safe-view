@@ -801,3 +801,90 @@ a.rank:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .age-list small{color:var(--muted);font-size:12px}
 @media (max-width:1000px){.insight-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){.ranks .rank:nth-child(n+6){display:none}.insight-grid{gap:10px;margin-top:10px}.notices-card{margin-bottom:10px}.notice{padding:10px 2px}}
+
+/* Customer decision at the top of a quotation */
+.decision-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 18px;border-color:var(--amber-fg)}
+.decision-bar h2{margin:0 0 2px}
+.decision-bar p{margin:0;font-size:13.5px}
+@media (max-width:640px){.decision-bar .card-actions{width:100%}.decision-bar .card-actions .btn{flex:1 1 auto}}
+
+/* Search */
+.search-btn{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:rgba(255,255,255,.04);color:#b6c0ce;font:600 13.5px var(--sans);cursor:pointer}
+.search-btn:hover{background:rgba(255,255,255,.08);color:#fff}
+.search-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.search-btn svg{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.search-btn kbd{margin-left:auto;padding:1px 6px;border:1px solid rgba(255,255,255,.18);border-radius:5px;font:600 11px var(--sans);color:#97a3b3}
+.search-overlay{align-items:start;padding-top:12vh}
+.search-pop{max-width:600px;padding:12px 14px}
+.search-field{display:flex;align-items:center;gap:10px;padding:0 4px 10px;border-bottom:1px solid var(--line)}
+.search-field svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round}
+.search-field input{margin:0;border:0;background:none;font-size:16px;padding:8px 0;min-height:44px}
+.search-field input:focus{outline:none}
+.search-hint{margin:16px 6px;font-size:13.5px}
+#searchResults{max-height:min(420px,60vh);overflow:auto;padding-top:6px}
+.search-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:10px 8px;border-radius:10px;color:var(--ink);text-decoration:none}
+.search-row.on,.search-row:hover{background:var(--hover)}
+.search-row b,.search-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-row small{color:var(--muted);font-size:12.5px}
+.search-row em{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+@media (max-width:860px){
+  .search-btn{width:44px;height:44px;min-height:44px;padding:0;justify-content:center;margin-left:auto}
+  .search-btn span,.search-btn kbd{display:none}
+  .side .search-btn+.quick-btn{margin-left:8px}
+  .search-overlay{padding-top:0;align-items:start}
+  .search-pop{border-radius:0 0 18px 18px;max-height:85dvh}
+}
+@media (max-width:640px){.search-row{grid-template-columns:minmax(0,1fr) auto}.search-row .badge{display:none}}
+.search-field input::-webkit-search-cancel-button{display:none}
+
+/* Insights in four columns on wide screens */
+.insight-grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.insight-grid.cols-4 .card{padding:16px}
+.insight-grid.cols-4 .age-list div{grid-template-columns:10px minmax(0,1fr) auto}
+.insight-grid.cols-4 .age-list small{display:none}
+.insight-grid.cols-4 .card-head{flex-wrap:wrap}
+.insight-grid.cols-4 .card-head>small{flex:0 0 100%}
+@media (max-width:1239px){.insight-grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}.insight-grid.cols-4 .age-list small{display:inline}.insight-grid.cols-4 .age-list div{grid-template-columns:10px minmax(0,1fr) auto auto}}
+@media (max-width:1000px){.insight-grid.cols-4{grid-template-columns:minmax(0,1fr)}}
+
+/* Layout switches drawn as icons */
+.icon-toggle{gap:2px;padding:3px;border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:visible}
+.icon-toggle button{display:grid;place-items:center;width:38px;min-height:34px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted)}
+.icon-toggle button:hover{background:var(--hover);color:var(--ink)}
+.icon-toggle button[aria-pressed=true]{background:var(--pick-bg);color:var(--pick-fg)}
+.icon-toggle svg{width:18px;height:18px;fill:currentColor;stroke:currentColor;stroke-width:0}
+.icon-toggle button[data-value=list] svg{fill:none;stroke-width:2;stroke-linecap:round}
+.icon-toggle button[data-value=list] svg circle{fill:currentColor;stroke:none}
+.stat-note{display:block;margin-top:2px;font-size:12px;font-weight:600;color:var(--muted)}
+.stat.hot .stat-note{color:#b6c0ce}
+
+/* Tiles that open a list */
+button.stat,button.kpi{display:block;width:100%;font:inherit;text-align:left;cursor:pointer;color:inherit;transition:border-color .15s,transform .15s}
+button.stat:hover,button.kpi:hover{border-color:var(--gold)}
+button.stat:focus-visible,button.kpi:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button.stat:active,button.kpi:active{transform:scale(.99)}
+.tap small::after{content:'›';margin-left:6px;color:var(--muted);font-size:13px}
+button.stat.hot{color:#fff}
+
+.phone-only{display:none}
+.day-row td{padding:14px 14px 6px!important;background:none!important;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:0!important}
+.extras-help{margin:-6px 0 10px}
+@media (max-width:640px){
+  .phone-only{display:inline}
+  .scroll table.compact td[data-label="Date"]{display:none}
+  .scroll table.ledger tr.day-row{padding:10px 2px 2px;margin:0;border:0;background:none}
+  .scroll table.ledger tr.day-row td{display:block;order:0;color:var(--muted);font-size:11.5px}
+  .ranks .rank:nth-child(n+4){display:none}
+  .extras-help{display:none}
+  .item:not(:has(.avatar)){grid-template-columns:minmax(0,1fr) auto auto;gap:4px 10px}
+  .item:not(:has(.avatar)) .item-actions{grid-column:auto;gap:0}
+  .item:not(:has(.avatar)) .item-actions .icon-btn{width:40px;height:44px}
+}
+@media (max-width:640px){
+  /* The activity log reads as one list, divided by day, instead of a stack of cards */
+  .scroll table.activity-log tr:not(.day-row){margin:0;padding:8px 12px;border-width:0 0 1px;border-radius:0}
+  .scroll table.activity-log td[data-label="Action"]{flex:1 1 auto;font-size:13.5px}
+  .scroll table.activity-log td[data-label="Time"]{order:2;margin-left:auto}
+  .scroll table.activity-log td[data-label="Who"]{order:3;flex:0 0 100%}
+}
+.earned-note{margin:10px 0 0;font-size:12.5px}

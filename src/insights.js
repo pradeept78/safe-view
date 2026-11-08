@@ -101,7 +101,7 @@ function registerInsights(app, { db, requireLogin }) {
     }
     const toCollect = owed.reduce((sum, order) => sum + order.balance, 0);
     if (owed.length) {
-      notices.push({ tone: 'amber', title: `${rupees(toCollect)} to collect from ${owed.length} ${owed.length === 1 ? 'project' : 'projects'}`, detail: `${rupees(aging[2].amount)} of it is over 60 days old.`, link: '#/projects' });
+      notices.push({ tone: 'amber', title: `${rupees(toCollect)} to collect from ${owed.length} ${owed.length === 1 ? 'project' : 'projects'}`, detail: aging[2].amount > 0 ? `${rupees(aging[2].amount)} of it is over 60 days old.` : 'None of it is over 60 days old.', link: '#/projects' });
     }
     const dueCalls = db.prepare(`
       SELECT COUNT(*) AS n FROM bills WHERE status = 'approved' AND quote_status = 'waiting' AND superseded_by IS NULL

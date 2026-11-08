@@ -76,9 +76,11 @@ function registerActivity(app, { db, requireLogin, requireAdmin, now }) {
   app.get('/api/activity', requireLogin, requireAdmin, (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
+    // Sign-ins happen many times a day, so they can be left out to show real changes.
+    const where = req.query.changes ? "WHERE action NOT IN ('Signed in', 'Signed out')" : '';
     res.json({
-      entries: db.prepare('SELECT id, who, action, detail, created_at FROM activity_log ORDER BY id DESC LIMIT ? OFFSET ?').all(limit, offset),
-      total: db.prepare('SELECT COUNT(*) AS n FROM activity_log').get().n,
+      entries: db.prepare(`SELECT id, who, action, detail, created_at FROM activity_log ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(limit, offset),
+      total: db.prepare(`SELECT COUNT(*) AS n FROM activity_log ${where}`).get().n,
     });
   });
 

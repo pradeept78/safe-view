@@ -67,6 +67,7 @@ test('money owed is sorted into age bands, oldest first', async () => {
   assert.ok(!body.owed.some((order) => order.id === paid));
   assert.match(body.notices[0].title, /Old Customer owes ₹[\d,]+ for 90 days/);
   assert.equal(body.notices[0].link, `#/project/${old}`);
+  assert.match(body.notices[1].detail, /of it is over 60 days old/);
 });
 
 test('customers count once across orders, and glass sold adds up by material', async () => {

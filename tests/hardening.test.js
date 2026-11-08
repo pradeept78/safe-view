@@ -169,3 +169,12 @@ test('the website has search basics, a privacy page and a friendly missing page'
   assert.equal(icon.status, 301);
   assert.equal((await fetch(`${base}/api/no-such-thing`)).headers.get('content-type').includes('json'), true);
 });
+
+test('the activity list can leave out sign-ins', async () => {
+  const adminCookie = await login('admin');
+  const all = await (await fetch(`${base}/api/activity?limit=200`, { headers: { Cookie: adminCookie } })).json();
+  const changes = await (await fetch(`${base}/api/activity?limit=200&changes=1`, { headers: { Cookie: adminCookie } })).json();
+  assert.ok(all.entries.some((entry) => entry.action === 'Signed in'));
+  assert.ok(!changes.entries.some((entry) => entry.action === 'Signed in'));
+  assert.equal(changes.total, changes.entries.length);
+});
