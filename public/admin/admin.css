@@ -731,3 +731,35 @@ a.avatar{text-decoration:none}
 .board-more:hover{color:var(--tone)}
 @media (max-width:1239px){.board{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.board{grid-template-columns:minmax(0,1fr)}}
+
+/* Lists with an edit popup: Users, Materials & Rates */
+.items{padding:4px 0}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:6px 14px;padding:12px 18px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.item:not(:has(.avatar)){grid-template-columns:minmax(0,1fr) auto auto}
+.item-main{min-width:0}
+.item-main b{display:block;font-size:14.5px;overflow-wrap:anywhere}
+.item-main small{display:block;margin-top:1px;color:var(--muted);font-size:12.5px}
+.item-tags{display:flex;flex-wrap:wrap;gap:6px}
+.item-amount{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.item-amount small{display:block;color:var(--muted);font-size:11.5px;font-weight:600}
+.item-actions{display:flex;align-items:center;gap:6px}
+.avatar.small{width:38px;height:38px;font-size:15px}
+.icon-btn.danger{color:var(--red-fg);font-size:22px;line-height:1}
+.popup-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.popup-fields>*{grid-column:1/-1}
+.popup-fields>.half{grid-column:auto}
+.popup-fields .check{margin-top:4px}
+@media (max-width:640px){
+  .item{grid-template-columns:auto minmax(0,1fr) auto;padding:12px 14px}
+  .item:not(:has(.avatar)){grid-template-columns:minmax(0,1fr) auto}
+  .item:has(.avatar) .avatar{grid-row:1/3}
+  .item-tags{grid-column:2;grid-row:2}
+  .item:has(.avatar) .item-actions{grid-column:3;grid-row:1/3}
+  .item:not(:has(.avatar)) .item-actions{grid-column:1/-1;justify-content:flex-end}
+  .reset-btn{width:44px;min-height:44px;padding:0;border-color:transparent;background:none;color:var(--muted)}
+  .reset-btn span{display:none}
+  .item-actions .icon-btn{width:44px;height:44px}
+}
+.reset-btn svg{display:none;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:640px){.reset-btn svg{display:block}}

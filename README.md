@@ -119,3 +119,13 @@ Changes made there do not reach the app. Password hashes and sign-in sessions ar
 ```bash
 npm test
 ```
+
+## Copy backups to your Mac
+
+The server makes a backup every night, but those copies live on the same server. Run this from your Mac now and then (weekly is good), so a lost server never means lost data:
+
+```bash
+bash scripts/pull-backups.sh
+```
+
+It copies every backup to `~/Documents/SafeView-Backups` and checks that the newest one opens. It uses `~/Downloads/safeview.pem` to connect; set `SAFEVIEW_KEY` if your key is somewhere else.

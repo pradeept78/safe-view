@@ -192,3 +192,5 @@ select{
   background-size:16px;
   cursor:pointer;
 }
+.form-note{margin:12px 0 0;color:var(--muted);font-size:13px}
+.form-note a{color:var(--gold2)}

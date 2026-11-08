@@ -81,6 +81,13 @@ const CONTENT_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ');
 
+function renderMessage404() {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found | Safe View Glass Solutions</title><link rel="icon" type="image/png" href="/admin/icons/favicon-48.png"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Manrope:wght@400;500;600;700&display=swap"><link rel="stylesheet" href="/site.css">
+<style>.missing{min-height:100vh;display:grid;place-content:center;gap:14px;padding:24px;text-align:center}.missing img{width:180px;margin:0 auto}.missing a{color:var(--gold2)}.missing h1{font:600 clamp(36px,8vw,52px)/1.1 var(--serif)}</style></head>
+<body><main class="missing"><img src="/img/word-t.png" alt="Safe View Glass Solutions"><h1>Page not found</h1><p class="lead">The page you opened does not exist.</p><p><a href="/">Go to the home page</a></p></main></body></html>`;
+}
+
 function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNotifier() } = {}) {
   const app = express();
   app.disable('x-powered-by');
@@ -545,7 +552,10 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
   registerBillActions(app, { db, requireLogin, requireAdmin, Problem, text, now, presentBill, getSettings });
 
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+  app.get('/favicon.ico', (req, res) => res.redirect(301, '/admin/icons/favicon-48.png'));
   app.use(express.static(path.join(__dirname, '..', 'public')));
+  // A friendly page instead of the plain "Cannot GET" text for a mistyped address.
+  app.use((req, res) => res.status(404).type('html').send(renderMessage404()));
 
   app.use((error, req, res, next) => {
     if (error.status && error.status < 500) return res.status(error.status).json({ error: error.message, field: error.field });
