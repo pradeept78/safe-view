@@ -152,3 +152,20 @@ test('docker logs have a size limit', () => {
   assert.equal((compose.match(/max-size/g) || []).length >= 1, true);
   assert.match(compose, /logging: \*limited-logs/);
 });
+
+test('the website has search basics, a privacy page and a friendly missing page', async () => {
+  for (const file of ['/robots.txt', '/sitemap.xml', '/privacy.html']) {
+    assert.equal((await fetch(base + file)).status, 200, file);
+  }
+  const robots = await (await fetch(`${base}/robots.txt`)).text();
+  assert.match(robots, /Disallow: \/admin\//);
+  const home = await (await fetch(`${base}/`)).text();
+  assert.match(home, /privacy\.html/);
+  assert.match(home, /og:title/);
+  const missing = await fetch(`${base}/no-such-page`);
+  assert.equal(missing.status, 404);
+  assert.match(await missing.text(), /Page not found/);
+  const icon = await fetch(`${base}/favicon.ico`, { redirect: 'manual' });
+  assert.equal(icon.status, 301);
+  assert.equal((await fetch(`${base}/api/no-such-thing`)).headers.get('content-type').includes('json'), true);
+});

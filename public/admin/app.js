@@ -706,46 +706,57 @@ async function enquiriesPage() {
 async function ratesPage() {
   const [glass, settings] = await Promise.all([api('/api/glass-types'), api('/api/settings')]);
   const isAdmin = me.role === 'admin';
-  const off = isAdmin ? '' : 'disabled';
-  const row = (g) => `
-    <tr data-id="${g.id}">
-      <td><input data-k="name" aria-label="Material name" class="material-name" placeholder="${g.id === 'new' ? 'Like: 8MM CLEAR TOUGHENED GLASS' : ''}" value="${esc(g.name)}" ${off}></td>
-      <td><input data-k="hsn" aria-label="HSN code" value="${esc(g.hsn)}" ${off}></td>
-      <td><input data-k="thickness_mm" aria-label="Thickness" type="number" step="0.1" value="${esc(g.thickness_mm)}" ${off}></td>
-      <td><input data-k="rate" aria-label="Rate" type="number" step="0.01" value="${esc(g.rate)}" ${off}></td>
-      <td><input data-k="gst_percent" aria-label="GST percent" type="number" step="0.01" value="${esc(g.gst_percent)}" ${off}></td>
-      ${isAdmin ? `<td style="white-space:nowrap"><button class="btn small ${g.id === 'new' ? 'main' : ''}" data-save>${g.id === 'new' ? 'Add Material' : 'Save'}</button>${g.id === 'new' ? '' : ' <button class="btn small danger" data-del>Remove</button>'}</td>` : ''}
-    </tr>`;
+  const row = (g) => `<div class="item">
+    <div class="item-main">
+      <b>${esc(g.name)}</b>
+      <small>${[g.hsn ? `HSN ${esc(g.hsn)}` : '', `${esc(g.thickness_mm)} mm`, `${esc(g.gst_percent)}% GST`].filter(Boolean).join(' · ')}</small>
+    </div>
+    <div class="item-amount">${money(g.rate)}<small>per sq m</small></div>
+    ${isAdmin ? `<div class="item-actions">
+      <button type="button" class="icon-btn" data-edit="${g.id}" aria-label="Edit ${esc(g.name)}" title="Edit">${PENCIL}</button>
+      <button type="button" class="icon-btn danger" data-del="${g.id}" aria-label="Remove ${esc(g.name)}" title="Remove">×</button>
+    </div>` : ''}
+  </div>`;
   shell('rates', `
-    <div class="head"><h1>Materials &amp; Rates</h1></div>
-    <p class="muted" style="margin:-10px 0 14px">Fill these in once. They appear in the dropdown on every new bill, with the rate and GST filled in.</p>
+    <div class="head"><h1>Materials &amp; Rates</h1>${isAdmin ? '<button type="button" class="btn main" id="addMaterial">+ Add Material</button>' : ''}</div>
     <div id="msg"></div>
-    <div class="card scroll"><table class="lines">
-      <tr><th>Material</th><th>HSN</th><th>Thickness (mm)</th><th>Rate per sq m</th><th>GST %</th>${isAdmin ? '<th></th>' : ''}</tr>
-      ${glass.map(row).join('')}
-      ${isAdmin ? `<tr class="add-heading"><td colspan="6">Add a new material</td></tr>${row({ id: 'new', name: '', hsn: '', thickness_mm: '', rate: '', gst_percent: settings.default_gst_percent })}` : ''}
-    </table></div>
-    ${isAdmin ? '<p class="muted">Rates are per square metre. Changing a rate or GST does not change bills already made.</p>' : '<p class="muted">Only the admin can change materials and rates.</p>'}`);
-  root.querySelectorAll('tr[data-id]').forEach((tr) => {
-    const body = () => Object.fromEntries([...tr.querySelectorAll('input')].map((i) => [i.dataset.k, i.value]));
-    const isNew = tr.dataset.id === 'new';
-    const saveButton = tr.querySelector('[data-save]');
-    const removeButton = tr.querySelector('[data-del]');
-    if (saveButton) {
-      saveButton.onclick = async () => {
-        try {
-          await api(isNew ? '/api/glass-types' : `/api/glass-types/${tr.dataset.id}`, isNew ? 'POST' : 'PUT', body());
-          await ratesPage();
-          showAlert('msg', 'Saved', 'good');
-        } catch (error) {
-          showAlert('msg', error.message);
-        }
-      };
-    }
-    if (removeButton) {
-      if (isNew) removeButton.remove();
-      else removeButton.onclick = async () => { await api(`/api/glass-types/${tr.dataset.id}`, 'DELETE'); ratesPage(); };
-    }
+    <div class="card items">${glass.map(row).join('') || '<p class="muted" style="margin:0">No materials yet.</p>'}</div>
+    <p class="muted">${isAdmin ? 'These fill in the material dropdown on every new bill, with the rate and GST. Rates are per square metre. Changing a rate or GST does not change bills already made.' : 'Only the admin can change materials and rates.'}</p>`);
+  const materialPopup = (g) => openFormPopup({
+    title: g ? 'Edit material' : 'Add a material',
+    fields: `<label>Material name<input name="name" value="${esc(g?.name || '')}" placeholder="Like: 8MM CLEAR TOUGHENED GLASS" maxlength="120" autocapitalize="characters" autocomplete="off"></label>
+      <label class="half">HSN<input name="hsn" value="${esc(g?.hsn || '')}" inputmode="numeric" maxlength="20" autocomplete="off"></label>
+      <label class="half">Thickness (mm)<input name="thickness_mm" type="number" step="0.1" min="0" value="${esc(g?.thickness_mm ?? '')}" inputmode="decimal"></label>
+      <label class="half">Rate per sq m<input name="rate" type="number" step="0.01" min="0" value="${esc(g?.rate ?? '')}" inputmode="decimal"></label>
+      <label class="half">GST %<input name="gst_percent" type="number" step="0.01" min="0" max="100" value="${esc(g?.gst_percent ?? settings.default_gst_percent)}" inputmode="decimal"></label>`,
+    note: g ? 'Bills already made keep their old rate.' : '',
+    saveLabel: g ? 'Save' : 'Add Material',
+    onSave: async (body) => {
+      await api(g ? `/api/glass-types/${g.id}` : '/api/glass-types', g ? 'PUT' : 'POST', body);
+      await ratesPage();
+      showToast('Saved');
+    },
+  });
+  const add = document.getElementById('addMaterial');
+  if (add) add.onclick = () => materialPopup(null);
+  root.querySelectorAll('[data-edit]').forEach((button) => {
+    button.onclick = () => materialPopup(glass.find((g) => String(g.id) === button.dataset.edit));
+  });
+  root.querySelectorAll('[data-del]').forEach((button) => {
+    const g = glass.find((item) => String(item.id) === button.dataset.del);
+    button.onclick = async () => {
+      const sure = await openDialog({
+        tone: 'danger', title: `Remove ${g.name}?`, message: 'It will no longer appear on new bills. Bills already made keep it.', confirmLabel: 'Remove', cancelLabel: 'Keep It',
+      });
+      if (!sure) return;
+      try {
+        await api(`/api/glass-types/${g.id}`, 'DELETE');
+        await ratesPage();
+        showToast('Removed');
+      } catch (error) {
+        showAlert('msg', error.message);
+      }
+    };
   });
 }
 
@@ -875,84 +886,85 @@ async function activityPage() {
 }
 
 // ----- Users -----
+const PENCIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.800 2.800 0 0 0-4-4L4 16zM13.500 6.500l4 4"/></svg>';
+const roleOptions = (role) => `<option value="partner" ${role === 'partner' ? 'selected' : ''}>Partner</option><option value="admin" ${role === 'admin' ? 'selected' : ''}>Admin</option>`;
+
 async function usersPage() {
   const users = await api('/api/users');
-  const row = (u) => `
-    <tr data-id="${u.id}">
-      <td><input data-k="name" aria-label="Name" style="min-width:170px" value="${esc(u.name)}" maxlength="80"></td>
-      <td><input data-k="username" aria-label="Username" style="min-width:130px" value="${esc(u.username)}" maxlength="40" autocapitalize="none" autocomplete="off" spellcheck="false"></td>
-      <td><select data-k="role" aria-label="Role" style="min-width:110px"><option value="partner" ${u.role === 'partner' ? 'selected' : ''}>Partner</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option></select></td>
-      <td><label class="check"><input type="checkbox" data-k="active" ${u.active ? 'checked' : ''}> Can sign in</label></td>
-      <td style="white-space:nowrap"><button class="btn small" data-save>Save</button> <button class="btn small" data-password>Reset Password</button></td>
-    </tr>`;
-  shell('users', `
-    <div class="head"><h1>Users</h1></div>
-    <div id="msg"></div>
-    <div class="card scroll">
-      <table class="lines"><tr><th>Name</th><th>Username</th><th>Role</th><th>Access</th><th></th></tr>${users.map(row).join('')}</table>
-      <p class="muted" style="margin-bottom:0">Admins can approve bills and manage users. Partners can make bills and add entries. If you change a username, tell that person, because they sign in with the new one. To remove someone, untick Can sign in, because their name stays on past bills.</p>
+  const row = (u) => `<div class="item">
+    <span class="avatar small" aria-hidden="true">${esc(u.name.charAt(0).toUpperCase())}</span>
+    <div class="item-main">
+      <b>${esc(u.name)}</b>
+      <small>Signs in as ${esc(u.username)}</small>
     </div>
-    ${fold('Add a user', `    <form class="card" id="add">
-      <h2>Add a user</h2>
-      <div class="entry" style="margin:0;padding:0;border:0">
-        <label>Name<input name="name" maxlength="80" required></label>
-        <label>Username<input name="username" autocapitalize="none" autocomplete="off" maxlength="40" required></label>
-        <label>Role<select name="role"><option value="partner">Partner</option><option value="admin">Admin</option></select></label>
-        <label>First password (at least 8 characters)<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-        <button class="btn main">Add User</button>
-      </div>
-    </form>`)}`);
-  document.getElementById('add').onsubmit = async (event) => {
-    event.preventDefault();
-    try {
-      await api('/api/users', 'POST', Object.fromEntries(new FormData(event.target)));
+    <div class="item-tags">
+      <span class="badge ${u.role === 'admin' ? 'approved' : 'contacted'}">${u.role === 'admin' ? 'Admin' : 'Partner'}</span>
+      ${u.active ? '' : '<span class="badge closed">Cannot sign in</span>'}
+    </div>
+    <div class="item-actions">
+      <button type="button" class="icon-btn" data-edit="${u.id}" aria-label="Edit ${esc(u.name)}" title="Edit">${PENCIL}</button>
+      <button type="button" class="btn small reset-btn" data-password="${u.id}" aria-label="Reset password for ${esc(u.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 7l3 3"/></svg><span>Reset Password</span></button>
+    </div>
+  </div>`;
+  shell('users', `
+    <div class="head"><h1>Users</h1><button type="button" class="btn main" id="addUser">+ Add User</button></div>
+    <div id="msg"></div>
+    <div class="card items">${users.map(row).join('')}</div>
+    <p class="muted">Admins approve bills and manage users. Partners make bills and add entries. If you change a username, tell that person, because they sign in with the new one. To remove someone, untick Can sign in, so their name stays on past bills.</p>`);
+  document.getElementById('addUser').onclick = () => openFormPopup({
+    title: 'Add a user',
+    fields: `<label>Name<input name="name" maxlength="80" autocomplete="off"></label>
+      <label class="half">Username<input name="username" maxlength="40" autocapitalize="none" autocomplete="off" spellcheck="false"></label>
+      <label class="half">Role<select name="role">${roleOptions('partner')}</select></label>
+      <label>First password (at least 8 characters)<input name="password" type="password" autocomplete="new-password"></label>`,
+    note: 'Share the password privately, and ask them to change it under My Account.',
+    saveLabel: 'Add User',
+    onSave: async (body) => {
+      await api('/api/users', 'POST', body);
       await usersPage();
-      showAlert('msg', 'User added. Ask them to change their password under My Account.', 'good');
-    } catch (error) {
-      showAlert('msg', error.message);
-    }
-    window.scrollTo(0, 0);
-  };
-  root.querySelectorAll('tr[data-id]').forEach((tr) => {
-    const { id } = tr.dataset;
-    tr.querySelector('[data-save]').onclick = async () => {
-      try {
-        const saved = await api(`/api/users/${id}`, 'PUT', {
-          username: tr.querySelector('[data-k=username]').value,
-          name: tr.querySelector('[data-k=name]').value,
-          role: tr.querySelector('[data-k=role]').value,
-          active: tr.querySelector('[data-k=active]').checked,
-        });
+      showToast('User added');
+    },
+  });
+  root.querySelectorAll('[data-edit]').forEach((button) => {
+    const user = users.find((u) => String(u.id) === button.dataset.edit);
+    button.onclick = () => openFormPopup({
+      title: `Edit ${user.name}`,
+      fields: `<label>Name printed on bills<input name="name" value="${esc(user.name)}" maxlength="80" autocomplete="off"></label>
+        <label class="half">Username<input name="username" value="${esc(user.username)}" maxlength="40" autocapitalize="none" autocomplete="off" spellcheck="false"></label>
+        <label class="half">Role<select name="role">${roleOptions(user.role)}</select></label>
+        <label class="check"><input type="checkbox" name="active" ${user.active ? 'checked' : ''}> Can sign in</label>`,
+      saveLabel: 'Save',
+      onSave: async (body) => {
+        const saved = await api(`/api/users/${user.id}`, 'PUT', { ...body, active: body.active === 'on' });
         if (saved.id === me.id) me = { ...me, username: saved.username, name: saved.name, role: saved.role };
         if (me.role !== 'admin') return route();
         await usersPage();
-        showAlert('msg', 'Saved', 'good');
-      } catch (error) {
-        showAlert('msg', error.message);
-      }
-      window.scrollTo(0, 0);
-    };
-    tr.querySelector('[data-password]').onclick = async () => {
-      const person = tr.querySelector('[data-k=name]').value;
+        showToast('Saved');
+      },
+    });
+  });
+  root.querySelectorAll('[data-password]').forEach((button) => {
+    const user = users.find((u) => String(u.id) === button.dataset.password);
+    button.onclick = async () => {
       const newPassword = await openDialog({
         tone: 'key',
-        title: `Reset password for ${person}?`,
+        title: `Reset password for ${user.name}?`,
         message: 'They will be signed out. Share the new password privately and ask them to change it.',
         confirmLabel: 'Reset Password',
         field: { label: 'New password', placeholder: 'At least 8 characters', validate: (value) => (value.length >= 8 ? '' : 'Use at least 8 characters') },
       });
       if (newPassword === null) return;
       try {
-        await api(`/api/users/${id}/password`, 'POST', { newPassword });
-        if (Number(id) === me.id) {
+        await api(`/api/users/${user.id}/password`, 'POST', { newPassword });
+        if (user.id === me.id) {
           me = null;
           return renderLogin();
         }
-        showAlert('msg', 'Password reset. That user has been signed out.', 'good');
+        showToast('Password reset. They have been signed out.');
       } catch (error) {
         showAlert('msg', error.message);
+        window.scrollTo(0, 0);
       }
-      window.scrollTo(0, 0);
     };
   });
 }
