@@ -1464,11 +1464,38 @@ const PROJECT_TESTS = {
   pay: (project) => project.vendorDue > 0,
   completed: (project) => project.status === 'completed',
 };
-const projectList = { filter: 'all' };
+const projectList = { filter: 'all', view: 'board' };
+const BOARD_MIN_WIDTH = 1240;
+const BOARD_ROWS = 5;
+
+// Each column answers one question. A project can sit in two columns, like in progress and money to collect.
+const BOARD_COLUMNS = [
+  { filter: 'running', title: 'In progress', tone: 'blue', total: 'orderValue', note: (p) => `${profitLabel(p.status)} ${wholeMoney(p.profit)}` },
+  { filter: 'collect', title: 'Money to collect', tone: 'red', total: 'balance', note: (p) => `${wholeMoney(p.received)} received` },
+  { filter: 'pay', title: 'Costs to pay', tone: 'amber', total: 'vendorDue', note: (p) => `${wholeMoney(p.vendorCost)} total costs` },
+  { filter: 'completed', title: 'Completed', tone: 'green', total: 'profit', note: (p) => `Finished ${shortDate(p.completedOn)}` },
+];
+
+function projectBoard(projects) {
+  return `<div class="board">${BOARD_COLUMNS.map(({ filter, title, tone, total, note }) => {
+    const list = projects.filter(PROJECT_TESTS[filter]);
+    const sum = list.reduce((amount, project) => amount + project[total], 0);
+    return `<section class="card board-column ${tone}">
+      <div class="board-head"><h2>${esc(title)}</h2><span class="board-count">${list.length}</span><b>${esc(wholeMoney(sum))}</b></div>
+      ${list.slice(0, BOARD_ROWS).map((p) => `<a class="board-row" href="#/project/${p.id}">
+        <span><b>${esc(p.customerName)}</b><small>${esc(p.number)} · ${esc(note(p))}</small></span>
+        <em>${esc(wholeMoney(p[total]))}</em>
+      </a>`).join('') || '<p class="muted board-empty">Nothing here.</p>'}
+      ${list.length > BOARD_ROWS ? `<button type="button" class="board-more" data-board-all="${filter}">View all ${list.length} →</button>` : ''}
+    </section>`;
+  }).join('')}</div>`;
+}
 
 async function projectsPage() {
   const projects = await api('/api/projects');
   const shown = projects.filter(PROJECT_TESTS[projectList.filter]);
+  const roomForBoard = window.innerWidth >= BOARD_MIN_WIDTH && projects.length > 0;
+  const showBoard = roomForBoard && projectList.view === 'board';
   const total = (key, list = projects) => list.reduce((sum, project) => sum + project[key], 0);
   const finished = projects.filter((project) => project.status === 'completed');
   const rows = shown.map((p) => `
@@ -1478,19 +1505,26 @@ async function projectsPage() {
       <td class="n">${money(p.vendorCost)}</td><td class="n ${p.profit < 0 ? 'loss' : 'gain'}">${money(p.profit)}</td>
     </tr>`).join('');
   shell('projects', `
-    <div class="head"><h1>Projects</h1></div>
+    <div class="head"><h1>Projects</h1>${roomForBoard ? chips('projectView', 'Project layout', [['board', 'Board'], ['list', 'List']], projectList.view) : ''}</div>
     <div class="stats">
       ${stat('Still to collect', wholeMoney(total('balance')), true)}
       ${stat('Costs still to pay', wholeMoney(total('vendorDue')))}
       ${stat('Confirmed profit', wholeMoney(total('profit', finished)))}
       ${stat('In progress', String(projects.length - finished.length))}
     </div>
-    ${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
+    ${showBoard ? projectBoard(projects) : `${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
     <div class="card scroll">
       ${shown.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Costs</th><th class="n">Profit</th></tr>${rows}</table>`
     : `<p class="muted">${projects.length ? 'No projects match this filter.' : 'Quotations appear here as projects once they are marked as won.'}</p>`}
-    </div>`);
-  wireChips('projectFilter', (filter) => { projectList.filter = filter; projectsPage(); });
+    </div>`}`);
+  if (roomForBoard) wireChips('projectView', (view) => { projectList.view = view; projectsPage(); });
+  if (!showBoard) wireChips('projectFilter', (filter) => { projectList.filter = filter; projectsPage(); });
+  root.querySelectorAll('[data-board-all]').forEach((button) => {
+    button.onclick = () => {
+      Object.assign(projectList, { view: 'list', filter: button.dataset.boardAll });
+      projectsPage();
+    };
+  });
   root.querySelectorAll('tr.link').forEach((row) => { row.onclick = () => { location.hash = `#/project/${row.dataset.id}`; }; });
 }
 
