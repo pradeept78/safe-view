@@ -94,6 +94,8 @@ Confirmed profit comes from completed projects. Expected profit comes from proje
 - The dashboard has dark and light themes. Dark is the default. Switch with the sun or moon button beside Sign out, or More on a phone, and each device remembers its choice.
 - Settings has Business, Bank and Bills tabs that save together. GST number, IFSC, WhatsApp, email, GST % and allowance are checked before saving.
 - Insights lists things worth noticing, money owed by age, top customers, best-selling glass and the vendors you pay most. Each item opens the related project or page.
+- Search (Cmd+K, or the search button) finds any bill by customer, phone or number from every page.
+- A waiting quotation shows Mark as Won, Mark as Lost and a call date at the top. An enquiry has Make Quote, which starts a bill with its details.
 - Quick add, in the sidebar or top bar, records payments, costs, expenses and investment from any page.
 - Add buttons on each page open the same popup, already set to that project or cost.
 - Monthly Accounts shows cash and online money in, vendor payments and shop expenses for a month.
@@ -130,3 +132,13 @@ bash scripts/pull-backups.sh
 ```
 
 It copies every backup to `~/Documents/SafeView-Backups` and checks that the newest one opens. It uses `~/Downloads/safeview.pem` to connect; set `SAFEVIEW_KEY` if your key is somewhere else.
+
+## Demo data for trying things out
+
+To see every page filled with a year of realistic activity, without touching your real data:
+
+```bash
+npm run demo
+```
+
+It builds a separate `data/demo.db` and opens it at http://localhost:4311/admin/. Sign in as `admin`, `partner2` or `partner3`; the password is `DEMO_PASSWORD` in `scripts/seed-demo.js`. Running it again rebuilds the demo from scratch. It refuses to run on the live server.

@@ -58,3 +58,10 @@ test('short searches return nothing, and % is treated as plain text', async () =
 test('customer search needs a login', async () => {
   assert.equal((await search('ravi', {})).status, 401);
 });
+
+test('bill search finds a phone typed without spaces', async () => {
+  const res = await fetch(`${base}/api/bills?q=9876543210&status=all`, { headers: { Cookie: cookie } });
+  const { bills } = await res.json();
+  assert.ok(bills.length >= 1);
+  assert.ok(bills.every((bill) => bill.customerPhone.replace(/\s/g, '').includes('9876543210')));
+});

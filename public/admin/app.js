@@ -52,6 +52,27 @@ const ICONS = {
 const THEME_ICONS = `<svg class="theme-icon theme-to-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg>
   <svg class="theme-icon theme-to-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.900 4.900l1.400 1.400M17.700 17.700l1.400 1.400M2 12h2M20 12h2M4.900 19.100l1.400-1.400M17.700 6.300l1.400-1.400"/></svg>`;
 
+// Where a clickable tile leads: a list with its filter set, a tab on this page, or a section below.
+function goTo(target) {
+  const [kind, value] = target.split(':');
+  const open = (hash, draw) => { if (location.hash === hash) draw(); else location.hash = hash; };
+  if (kind === 'projects') {
+    Object.assign(projectList, { filter: value, view: 'list' });
+    return open('#/projects', projectsPage);
+  }
+  if (kind === 'bills') {
+    Object.assign(billList, { status: value, q: '' });
+    return open('#/bills', billsPage);
+  }
+  if (kind === 'quotes') {
+    Object.assign(report, { status: value, visible: QUOTE_PAGE, scrollToList: true });
+    return open('#/quotations', quotationsPage);
+  }
+  if (kind === 'tab') return root.querySelector(`[data-tab="${value}"]`)?.click();
+  if (kind === 'scroll') return document.getElementById(value)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  location.hash = target;
+}
+
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
@@ -62,6 +83,7 @@ function shell(active, content) {
     <div class="layout">
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
+        <button type="button" class="search-btn" id="searchBtn" aria-label="Search bills and customers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.500-3.500"/></svg><span>Search</span><kbd>⌘K</kbd></button>
         <button type="button" class="quick-btn" id="quickAdd"><span aria-hidden="true">+</span> Quick add</button>
         <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('insights', 'Insights')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
@@ -98,6 +120,8 @@ function shell(active, content) {
     renderLogin();
   };
   document.getElementById('quickAdd').onclick = () => openQuickAdd();
+  root.querySelectorAll('[data-go]').forEach((tile) => { tile.onclick = () => goTo(tile.dataset.go); });
+  document.getElementById('searchBtn').onclick = openSearch;
   const flipTheme = () => window.setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   document.getElementById('themeBtn').onclick = flipTheme;
   document.getElementById('sheetTheme').onclick = flipTheme;
@@ -233,6 +257,17 @@ const chips = (id, label, options, chosen) => `<div class="chips" id="${id}" rol
   ${options.map(([value, text]) => `<button type="button" data-value="${value}" aria-pressed="${value === chosen}">${text}</button>`).join('')}
 </div>`;
 
+// The same tap filter, drawn as icons with a label for screen readers and a tooltip.
+const LAYOUT_ICONS = {
+  four: '<rect x="3" y="5" width="3.200" height="14" rx="1"/><rect x="7.900" y="5" width="3.200" height="14" rx="1"/><rect x="12.900" y="5" width="3.200" height="14" rx="1"/><rect x="17.800" y="5" width="3.200" height="14" rx="1"/>',
+  two: '<rect x="3" y="5" width="8" height="14" rx="1.500"/><rect x="13" y="5" width="8" height="14" rx="1.500"/>',
+  board: '<rect x="3" y="5" width="5" height="14" rx="1.200"/><rect x="9.500" y="5" width="5" height="9" rx="1.200"/><rect x="16" y="5" width="5" height="11" rx="1.200"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+};
+const iconToggle = (id, label, options, chosen) => `<div class="chips icon-toggle" id="${id}" role="group" aria-label="${label}">
+  ${options.map(([value, text, icon]) => `<button type="button" data-value="${value}" aria-pressed="${value === chosen}" aria-label="${text}" title="${text}"><svg viewBox="0 0 24 24" aria-hidden="true">${LAYOUT_ICONS[icon]}</svg></button>`).join('')}
+</div>`;
+
 function wireChips(id, onPick) {
   const box = document.getElementById(id);
   const buttons = [...box.querySelectorAll('button')];
@@ -255,12 +290,12 @@ function drawBillResults() {
   if (!box) return;
   const rows = billList.items.map((b) => `
     <tr class="link" data-id="${b.id}">
-      <td>${esc(b.number || `Draft ${b.id}`)}</td><td>${esc(b.customerName)}</td><td>${billBadge(b)}</td>
-      <td>${esc(b.preparedBy)}</td><td class="n">${money(b.totals.grandTotal)}</td>
+      <td>${esc(b.number || `Draft ${b.id}`)}<span class="phone-only"> · ${shortDate((b.approvedAt || b.createdAt || '').slice(0, 10))}</span></td><td>${esc(b.customerName)}</td><td>${billBadge(b)}</td>
+      <td>${shortDate((b.approvedAt || b.createdAt || '').slice(0, 10))}</td><td>${esc(b.preparedBy)}</td><td class="n">${money(b.totals.grandTotal)}</td>
     </tr>`).join('');
   const searching = billList.q || billList.status !== 'all';
   box.innerHTML = billList.items.length ? `
-    <table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>
+    <table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Date</th><th>Prepared by</th><th class="n">Total</th></tr>${rows}</table>
     <p class="muted list-count">Showing ${billList.items.length} of ${billList.total}</p>
     ${billList.items.length < billList.total ? '<button class="btn load-more" id="loadMore">Load More</button>' : ''}`
     : `<p class="muted">${searching ? 'No bills match this search.' : 'No bills yet. Choose New Bill to make the first one.'}</p>`;
@@ -270,7 +305,7 @@ function drawBillResults() {
 }
 
 async function fetchBills(offset) {
-  const query = new URLSearchParams({ q: billList.q, status: billList.status, offset: String(offset) });
+  const query = new URLSearchParams({ q: billList.q, status: billList.status, offset: String(offset), limit: window.innerWidth <= 640 ? '15' : '30' });
   return api(`/api/bills?${query}`);
 }
 
@@ -291,9 +326,9 @@ async function billsPage() {
     <div class="head"><h1>Bills</h1><a class="btn main" href="#/bill/new">+ New Bill</a></div>
     <div class="stats">
       <div class="stat hot"><small>Approved this month</small><b>${wholeMoney(stats.approvedThisMonth)}</b></div>
-      <div class="stat"><small>Waiting for approval</small><b>${stats.waiting}</b></div>
-      <div class="stat"><small>Drafts</small><b>${stats.drafts}</b></div>
-      <div class="stat"><small>New enquiries</small><b>${newEnquiries}</b></div>
+      ${stat('Waiting for approval', String(stats.waiting), false, '', 'bills:pending')}
+      ${stat('Drafts', String(stats.drafts), false, '', 'bills:draft')}
+      ${stat('New enquiries', String(newEnquiries), false, '', '#/enquiries')}
     </div>
     ${me.role === 'admin' && stats.waiting ? `<div class="alert warn">${stats.waiting} bill${stats.waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
     <div class="finder">
@@ -311,6 +346,8 @@ async function billsPage() {
 }
 
 // ----- Bill editor -----
+// Details carried from an enquiry into the next new bill.
+let billPrefill = null;
 function wireCustomerPicker() {
   const box = document.getElementById('customerMatches');
   const fill = { customerName: 'name', customerPhone: 'phone', customerAddress: 'address', customerGstin: 'gstin', customerStateCode: 'stateCode' };
@@ -375,6 +412,7 @@ async function billPage(id) {
     ${bill?.revisesId ? `<div class="alert warn">${bill.status === 'approved' ? 'Replaces' : 'Revising'} <a href="#/bill/${bill.revisesId}">${esc(bill.revisesNumber)}</a>.${bill.status === 'approved' ? '' : ' The old bill stays valid until this one is approved.'}</div>` : ''}
     ${bill?.openRevisionId ? `<div class="alert warn">A revision is in progress. <a href="#/bill/${bill.openRevisionId}">Open the revision</a>.</div>` : ''}
     ${isAdmin && missing.length && bill?.status !== 'approved' ? '<div class="alert warn">Your GST number, address or bank details are blank in Settings. Add them before approving real bills.</div>' : ''}
+    <div id="decisionTop"></div>
     <div class="card">
       <h2>Customer</h2>
       <div class="grid">
@@ -401,10 +439,9 @@ async function billPage(id) {
       </div>
     </div>
     <div class="card" id="extrasCard">
-      <h2>Additional charges</h2>
-      <p class="muted" style="margin:-8px 0 12px">For anything priced by hand, like fitting, holes, cut-outs or transport.</p>
+      <div class="card-head"><h2>Additional charges</h2>${editable ? '<button class="btn small" id="addExtra">+ Add charge</button>' : ''}</div>
+      <p class="muted extras-help">For anything priced by hand, like fitting, holes, cut-outs or transport.</p>
       <div class="scroll"><table class="lines" id="extras"></table></div>
-      ${editable ? '<p style="margin-bottom:0"><button class="btn small" id="addExtra">Add charge</button></p>' : ''}
     </div>
     <div class="card"><div class="totals" id="totals"></div></div>
     <div id="decision"></div>
@@ -412,6 +449,12 @@ async function billPage(id) {
     ${bill ? `<p class="muted">Prepared by ${esc(bill.preparedBy)}${bill.checkedBy ? ` · Checked by ${esc(bill.checkedBy)}` : ''}</p>` : ''}
     <div class="savebar"><div class="savetotal" id="saveTotal"></div><div class="acts" id="acts"></div></div>`);
   if (editable) wireCustomerPicker();
+  if (!bill && billPrefill) {
+    Object.entries(billPrefill).forEach(([key, value]) => { document.getElementById(key).value = value || ''; });
+    if (billPrefill.projectRemark) document.getElementById('customerMore').open = true;
+    billPrefill = null;
+    showToast('Filled in from the enquiry');
+  }
 
   function blankLine(type) {
     return {
@@ -691,6 +734,7 @@ async function enquiriesPage() {
         ${e.message ? `<div>${esc(e.message)}</div>` : ''}
         <div class="muted">${when(e.created_at)}</div>
         <div class="acts">
+          ${e.status === 'closed' ? '' : `<button class="btn small main" data-quote="${e.id}">Make Quote</button>`}
           <button class="btn small" data-id="${e.id}" data-status="contacted">Mark contacted</button>
           <button class="btn small" data-id="${e.id}" data-status="closed">Close</button>
         </div>
@@ -699,6 +743,18 @@ async function enquiriesPage() {
     button.onclick = async () => {
       await api(`/api/enquiries/${button.dataset.id}`, 'PUT', { status: button.dataset.status });
       enquiriesPage();
+    };
+  });
+  root.querySelectorAll('[data-quote]').forEach((button) => {
+    button.onclick = async () => {
+      const enquiry = list.find((e) => String(e.id) === button.dataset.quote);
+      billPrefill = {
+        customerName: enquiry.name,
+        customerPhone: enquiry.phone,
+        projectRemark: [enquiry.service, enquiry.message].filter(Boolean).join(': ').slice(0, 200),
+      };
+      if (enquiry.status === 'new') await api(`/api/enquiries/${enquiry.id}`, 'PUT', { status: 'contacted' }).catch(() => {});
+      location.hash = '#/bill/new';
     };
   });
 }
@@ -852,22 +908,35 @@ async function showEnquiryBadge() {
 }
 
 // ----- Activity log -----
-const activityList = { items: [], total: 0 };
+const activityList = { items: [], total: 0, show: 'changes' };
+const activityQuery = (offset = 0) => `/api/activity?${new URLSearchParams({ limit: '25', offset: String(offset), ...(activityList.show === 'changes' ? { changes: '1' } : {}) })}`;
+const dayLabel = (iso) => {
+  const day = new Date(iso).toLocaleDateString('en-CA');
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
+  if (day === today()) return 'Today';
+  if (day === yesterday) return 'Yesterday';
+  return new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+};
 
 function drawActivity() {
   const box = document.getElementById('activityResults');
   if (!box) return;
-  const rows = activityList.items.map((a) => `
-    <tr><td>${esc(when(a.created_at))}</td><td>${esc(a.who)}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`).join('');
+  let lastDay = '';
+  const rows = activityList.items.map((a) => {
+    const day = dayLabel(a.created_at);
+    const heading = day === lastDay ? '' : `<tr class="day-row"><td colspan="4">${esc(day)}</td></tr>`;
+    lastDay = day;
+    return `${heading}<tr><td>${esc(new Date(a.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}</td><td>${esc(a.who)}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`;
+  }).join('');
   box.innerHTML = activityList.items.length ? `
-    <table class="ledger"><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th></tr>${rows}</table>
+    <table class="ledger activity-log"><tr><th>Time</th><th>Who</th><th>Action</th><th>Details</th></tr>${rows}</table>
     <p class="muted list-count">Showing ${activityList.items.length} of ${activityList.total}</p>
     ${activityList.items.length < activityList.total ? '<button class="btn load-more" id="moreActivity">Load More</button>' : ''}`
     : '<p class="muted">Nothing recorded yet.</p>';
   const more = document.getElementById('moreActivity');
   if (more) {
     more.onclick = async () => {
-      const next = await api(`/api/activity?limit=25&offset=${activityList.items.length}`);
+      const next = await api(activityQuery(activityList.items.length));
       activityList.items.push(...next.entries);
       activityList.total = next.total;
       drawActivity();
@@ -876,13 +945,15 @@ function drawActivity() {
 }
 
 async function activityPage() {
-  const first = await api('/api/activity?limit=25');
+  const first = await api(activityQuery());
   activityList.items = first.entries;
   activityList.total = first.total;
   shell('activity', `
     <div class="head"><h1>Activity</h1></div>
     <p class="muted" style="margin:-10px 0 14px">Who did what, starting from when this log was added. Passwords are never recorded.</p>
+    ${chips('activityShow', 'Show', [['changes', 'Changes only'], ['all', 'Everything, with sign-ins']], activityList.show)}
     <div class="card scroll" id="activityResults"></div>`);
+  wireChips('activityShow', (show) => { activityList.show = show; activityPage(); });
   drawActivity();
 }
 
@@ -1086,30 +1157,47 @@ async function drawDecision(bill) {
   const fields = (form) => Object.fromEntries(new FormData(form));
 
   if (bill.quoteStatus === 'waiting') {
-    box.innerHTML = `
-      <div class="card">
-        <h2>Customer decision</h2>
-        <form class="order" id="followUp">
-          <label>Follow up on<input type="date" name="followUpOn" value="${esc(bill.followUpOn || '')}"></label>
-          <button class="btn">Save Follow-up</button>
-        </form>
-        <div class="split decide">
-          <form class="stack won-box" id="won">
-            <h2>Order won</h2>
-            <label>Order accepted on<input type="date" name="acceptedOn" value="${today()}" required></label>
-            <button class="btn go">Mark as Won</button>
-          </form>
-          <form class="stack lost-box" id="lost">
-            <h2>Order lost</h2>
-            <label>Why was it lost?<select name="reason" required><option value="">Choose a reason</option>${reasons.map((r) => `<option>${esc(r)}</option>`).join('')}</select></label>
-            <label>Note<input name="note" maxlength="300" placeholder="Like: competitor quoted ₹620 per sq m"></label>
-            <button class="btn danger">Mark as Lost</button>
-          </form>
-        </div>
-      </div>`;
-    document.getElementById('followUp').onsubmit = (event) => { event.preventDefault(); send('follow-up', fields(event.target)); };
-    document.getElementById('won').onsubmit = (event) => { event.preventDefault(); send('won', fields(event.target)); };
-    document.getElementById('lost').onsubmit = (event) => { event.preventDefault(); send('lost', fields(event.target)); };
+    // The customer's answer is the next step, so it sits at the top of the bill.
+    const top = document.getElementById('decisionTop');
+    top.innerHTML = `<div class="card decision-bar">
+      <div><h2>Customer decision</h2><p class="muted">Sent ${shortDate((bill.approvedAt || '').slice(0, 10))}. ${bill.followUpOn ? `Call on ${shortDate(bill.followUpOn)}.` : 'No call date set.'}</p></div>
+      <div class="card-actions">
+        <button type="button" class="btn go" id="markWon">Mark as Won</button>
+        <button type="button" class="btn danger" id="markLost">Mark as Lost</button>
+        <button type="button" class="btn" id="setFollowUp">${bill.followUpOn ? 'Change Call Date' : 'Set Call Date'}</button>
+      </div>
+    </div>`;
+    const decide = async (path, body) => {
+      await api(`/api/quotations/${bill.id}/${path}`, 'PUT', body);
+      if (path === 'won') {
+        location.hash = `#/project/${bill.id}`;
+        showToast('Order won. It is now a project.');
+        return;
+      }
+      showToast(path === 'lost' ? 'Marked as lost' : 'Call date saved');
+      route();
+    };
+    document.getElementById('markWon').onclick = () => openFormPopup({
+      title: 'Mark as won',
+      fields: `<label>Order accepted on<input type="date" name="acceptedOn" value="${today()}"></label>`,
+      note: 'The quotation becomes a project, ready for payments and costs.',
+      saveLabel: 'Mark as Won',
+      onSave: (body) => decide('won', body),
+    });
+    document.getElementById('markLost').onclick = () => openFormPopup({
+      title: 'Mark as lost',
+      fields: `<label>Why was it lost?<select name="reason"><option value="">Choose a reason</option>${reasons.map((r) => `<option>${esc(r)}</option>`).join('')}</select></label>
+        <label>Note (optional)<input name="note" maxlength="300" placeholder="Like: competitor quoted ₹620 per sq m"></label>`,
+      saveLabel: 'Mark as Lost',
+      onSave: (body) => decide('lost', body),
+    });
+    document.getElementById('setFollowUp').onclick = () => openFormPopup({
+      title: 'Call the customer on',
+      fields: `<label>Call date<input type="date" name="followUpOn" value="${esc(bill.followUpOn || today())}"></label>`,
+      note: 'It shows on Quotations and Insights on that day. Clear the date to remove it.',
+      saveLabel: 'Save Date',
+      onSave: (body) => decide('follow-up', body),
+    });
     return;
   }
 
@@ -1184,7 +1272,10 @@ const monthName = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString
 const monthLong = (month) => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
 const wholeMoney = (value) => money(Math.round(value)).replace(/\.00$/, '');
-const kpi = (label, value, note, tone) => `<div class="kpi ${tone}"><small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(note)}</span></div>`;
+const kpi = (label, value, note, tone, go) => {
+  const inner = `<small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(note)}</span>`;
+  return go ? `<button type="button" class="kpi tap ${tone}" data-go="${go}" aria-label="${esc(label)} ${esc(value)}. Show the list.">${inner}</button>` : `<div class="kpi ${tone}">${inner}</div>`;
+};
 
 // Rounds a chart's top up to a tidy number, so the scale reads ₹50K and not ₹47.3K.
 function tidyTop(value) {
@@ -1234,7 +1325,7 @@ function wireTrend(months) {
     const month = months[picked];
     box.innerHTML = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
       <defs><linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-opacity=".24"/><stop offset="100%" stop-opacity="0"/></linearGradient></defs>
-      ${[...new Set([top, top / 2, 0, bottom])].map((tick) => `<line class="grid-line" x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}"/><text class="axis" x="${left - 8}" y="${y(tick) + 4}" text-anchor="end">${esc(shortMoney(tick).replace('.0', ''))}</text>`).join('')}
+      ${[...new Set([top, top / 2, 0, bottom])].filter((tick, index, all) => all.slice(0, index).every((kept) => Math.abs(y(kept) - y(tick)) >= 16)).map((tick) => `<line class="grid-line" x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}"/><text class="axis" x="${left - 8}" y="${y(tick) + 4}" text-anchor="end">${esc(shortMoney(tick).replace('.0', ''))}</text>`).join('')}
       <path d="${area}" fill="url(#salesFill)"/>
       <path class="trend-line sales" d="${line('sales')}"/>
       <path class="trend-line profit" d="${line('confirmedProfit')}"/>
@@ -1303,16 +1394,21 @@ function rankList(rows, { name, value, note, link }) {
   }).join('')}</div>`;
 }
 
+// On a wide screen the four lists can sit side by side. The choice is remembered on this device.
+const INSIGHT_COLUMNS_KEY = 'safe-view-insight-columns';
+const insightsView = { columns: (() => { try { return localStorage.getItem(INSIGHT_COLUMNS_KEY) === '2' ? '2' : '4'; } catch { return '4'; } })() };
+
 async function insightsPage() {
   const i = await api('/api/insights');
+  const roomForFour = window.innerWidth >= BOARD_MIN_WIDTH;
   const owedTotal = i.aging.reduce((sum, band) => sum + band.amount, 0);
   shell('insights', `
-    <div class="head"><h1>Insights</h1></div>
+    <div class="head"><h1>Insights</h1>${roomForFour ? iconToggle('insightColumns', 'Insights layout', [['4', '4 columns', 'four'], ['2', '2 columns', 'two']], insightsView.columns) : ''}</div>
     <div class="card">
       <h2>Things worth noticing</h2>
       ${noticeList(i.notices)}
     </div>
-    <div class="insight-grid">
+    <div class="insight-grid ${roomForFour && insightsView.columns === '4' ? 'cols-4' : ''}" id="insightGrid">
       <div class="card">
         <div class="card-head"><h2>Money owed by age</h2><b>${esc(wholeMoney(owedTotal))}</b></div>
         ${owedTotal > 0 ? `<div class="split-bar" role="img" aria-label="Money owed by age, listed below">${i.aging.filter((band) => band.amount > 0).map((band) => `<i class="age ${band.tone}" style="flex-grow:${band.amount / owedTotal}" title="${esc(band.label)} ${esc(wholeMoney(band.amount))}"></i>`).join('')}</div>
@@ -1335,6 +1431,13 @@ async function insightsPage() {
       </div>
     </div>
     <p class="muted">Customers count from won orders. Glass and customer values leave out GST. Money owed includes GST, because that is what the customer pays.</p>`);
+  if (roomForFour) {
+    wireChips('insightColumns', (columns) => {
+      insightsView.columns = columns;
+      document.getElementById('insightGrid').classList.toggle('cols-4', columns === '4');
+      try { localStorage.setItem(INSIGHT_COLUMNS_KEY, columns); } catch { /* The choice lasts until the page closes. */ }
+    });
+  }
 }
 
 async function overviewPage() {
@@ -1345,10 +1448,10 @@ async function overviewPage() {
   shell('overview', `
     <div class="head"><h1>Overview</h1></div>
     <div class="kpis">
-      ${kpi('Total sales', wholeMoney(o.sales), `${o.orders} ${o.orders === 1 ? 'order' : 'orders'} won, before GST`, 'blue')}
-      ${kpi('Confirmed profit', wholeMoney(o.confirmedProfit), `${o.completed} completed`, o.confirmedProfit < 0 ? 'red' : 'green')}
-      ${kpi('Expected profit', wholeMoney(o.expectedProfit), `${o.inProgress} in progress`, o.expectedProfit < 0 ? 'red' : 'amber')}
-      ${kpi('Money to collect', wholeMoney(o.toCollect), `${wholeMoney(o.received)} received of ${wholeMoney(o.billed)}`, 'red')}
+      ${kpi('Total sales', wholeMoney(o.sales), `${o.orders} ${o.orders === 1 ? 'order' : 'orders'} won, before GST`, 'blue', 'projects:all')}
+      ${kpi('Confirmed profit', wholeMoney(o.confirmedProfit), `${o.completed} completed`, o.confirmedProfit < 0 ? 'red' : 'green', 'projects:completed')}
+      ${kpi('Expected profit', wholeMoney(o.expectedProfit), `${o.inProgress} in progress`, o.expectedProfit < 0 ? 'red' : 'amber', 'projects:running')}
+      ${kpi('Money to collect', wholeMoney(o.toCollect), `${wholeMoney(o.received)} received of ${wholeMoney(o.billed)}`, 'red', 'projects:collect')}
     </div>
     <div class="card notices-card">
       <div class="card-head"><h2>Things worth noticing</h2><a class="see-all" href="#/insights">See all insights →</a></div>
@@ -1360,22 +1463,23 @@ async function overviewPage() {
     </div>
     ${fold('More numbers', `    <div class="grid3-cards">
       <div class="card"><h2>Profit</h2><div class="totals plain">
-        ${row(`Confirmed (${o.completed} completed)`, money(o.confirmedProfit))}
-        ${row('Shop expenses', money(-o.expenses))}
-        ${row('After shop expenses', money(o.afterExpenses), true)}
-        ${row(`Expected (${o.inProgress} in progress)`, money(o.expectedProfit))}
+        ${row(`Confirmed (${o.completed} completed)`, wholeMoney(o.confirmedProfit))}
+        ${row('Shop expenses', wholeMoney(-o.expenses))}
+        ${row('After shop expenses', wholeMoney(o.afterExpenses), true)}
+        ${row(`Expected (${o.inProgress} in progress)`, wholeMoney(o.expectedProfit))}
       </div></div>
       <div class="card"><h2>Money</h2><div class="totals plain">
-        ${row('Billed with GST', money(o.billed))}
-        ${row('Received', money(o.received))}
-        ${row('Still to collect', money(o.toCollect), true)}
-        ${row('Costs still to pay', money(o.vendorDue))}
+        ${row('Billed with GST', wholeMoney(o.billed))}
+        ${row('Received', wholeMoney(o.received))}
+        ${row('Still to collect', wholeMoney(o.toCollect), true)}
+        ${row('Costs still to pay', wholeMoney(o.vendorDue))}
       </div></div>
       <div class="card"><h2>Investment</h2><div class="totals plain">
-        ${row('Total invested', money(o.investment))}
-        ${row('Earned back so far', `${o.recoveredPercent}%`, true)}
+        ${row('Total invested', wholeMoney(o.investment))}
+        ${row('Earned back so far', o.afterExpenses > 0 ? `${o.recoveredPercent}%` : 'Not yet', true)}
       </div>
-      <div class="progress" role="img" aria-label="${o.recoveredPercent}% of the investment earned back"><span style="width:${Math.min(o.recoveredPercent, 100)}%"></span></div></div>
+      <div class="progress" role="img" aria-label="${o.recoveredPercent}% of the investment earned back"><span style="width:${Math.min(o.recoveredPercent, 100)}%"></span></div>
+      ${o.afterExpenses > 0 ? '' : `<p class="muted earned-note">Shop expenses are ${esc(wholeMoney(-o.afterExpenses))} more than confirmed profit so far, so nothing is earned back yet.</p>`}</div>
       <div class="card"><h2>Quotations</h2><div class="totals plain">
         ${row('Won', String(o.won))}
         ${row('Lost', String(o.lost))}
@@ -1392,7 +1496,11 @@ async function overviewPage() {
 
 // ----- Quotation report -----
 const monthStart = () => `${today().slice(0, 7)}-01`;
-const report = { from: null, to: null, status: 'all', range: 'month' };
+const QUOTE_PAGE = window.innerWidth <= 640 ? 10 : 25;
+// The chosen range is remembered on this device, because the start of a month is often empty.
+const RANGE_KEY = 'safe-view-quote-range';
+const savedRange = (() => { try { return localStorage.getItem(RANGE_KEY); } catch { return null; } })();
+const report = { from: null, to: null, status: 'all', range: ['month', 'last', 'three', 'year'].includes(savedRange) ? savedRange : 'three' };
 const REPORT_RANGES = [['month', 'This month'], ['last', 'Last month'], ['three', 'Last 3 months'], ['year', 'This financial year'], ['custom', 'Pick dates']];
 
 function datesFor(range) {
@@ -1407,10 +1515,11 @@ function datesFor(range) {
 }
 
 async function quotationsPage() {
-  report.from = report.from || monthStart();
-  report.to = report.to || today();
+  if (!report.from) Object.assign(report, datesFor(report.range === 'custom' ? 'three' : report.range));
   const q = await api(`/api/quotations?from=${encodeURIComponent(report.from)}&to=${encodeURIComponent(report.to)}`);
-  const shown = report.status === 'all' ? q.quotations : q.quotations.filter((x) => x.status === report.status);
+  const matching = report.status === 'all' ? q.quotations : q.quotations.filter((x) => x.status === report.status);
+  report.visible = report.visible || QUOTE_PAGE;
+  const shown = matching.slice(0, report.visible);
   const rows = shown.map((x) => `
     <tr class="link" data-id="${x.id}">
       <td>${esc(x.number)}</td><td>${esc(x.customerName)}</td><td>${shortDate(x.sentOn)}</td><td>${quoteBadge(x.status)}</td>
@@ -1435,9 +1544,9 @@ async function quotationsPage() {
     <div id="msg"></div>
     <div class="stats">
       ${stat('Win rate', q.winRate === null ? 'No results yet' : `${q.winRate}%`, true)}
-      ${stat('Quotations sent', q.sent)}
-      ${stat('Won', q.won)}
-      ${stat('Lost', q.lost)}
+      ${stat('Quotations sent', q.sent, false, '', 'quotes:all')}
+      ${stat('Won', q.won, false, '', 'quotes:won')}
+      ${stat('Lost', q.lost, false, '', 'quotes:lost')}
     </div>
     ${fold('Value and lost reasons', `    <div class="card">
       <div class="split">
@@ -1462,7 +1571,7 @@ async function quotationsPage() {
       <h2>Follow-ups</h2>
       <table class="ledger"><tr><th>Call on</th><th>Bill</th><th>Customer</th><th>Phone</th><th class="n">Value</th></tr>${followRows}</table>
     </div>` : ''}
-    <div class="card">
+    <div class="card" id="allQuotes">
       <div class="head" style="margin-bottom:10px">
         <h2 style="margin:0">All quotations</h2>
         <select id="status" aria-label="Show status" style="max-width:220px;margin:0">
@@ -1470,10 +1579,14 @@ async function quotationsPage() {
         </select>
       </div>
       ${shown.length ? `<div class="scroll"><table class="compact"><tr><th>Bill</th><th>Customer</th><th>Sent</th><th>Status</th><th>Reason</th><th class="n">Value</th></tr>${rows}</table></div>` : '<p class="muted">No quotations to show. Approved bills appear here.</p>'}
+      ${matching.length > shown.length ? `<button class="btn load-more" id="moreQuotes">Show ${Math.min(QUOTE_PAGE, matching.length - shown.length)} more of ${matching.length - shown.length}</button>` : ''}
     </div>`);
   wireChips('reportRange', (range) => {
     report.range = range;
-    if (range !== 'custom') Object.assign(report, datesFor(range));
+    if (range !== 'custom') {
+      Object.assign(report, datesFor(range));
+      try { localStorage.setItem(RANGE_KEY, range); } catch { /* The choice lasts until the page closes. */ }
+    }
     quotationsPage();
   });
   const customRange = document.getElementById('range');
@@ -1484,7 +1597,13 @@ async function quotationsPage() {
       quotationsPage();
     };
   }
-  document.getElementById('status').onchange = (event) => { report.status = event.target.value; quotationsPage(); };
+  document.getElementById('status').onchange = (event) => { Object.assign(report, { status: event.target.value, visible: QUOTE_PAGE }); quotationsPage(); };
+  const moreQuotes = document.getElementById('moreQuotes');
+  if (moreQuotes) moreQuotes.onclick = () => { report.visible += QUOTE_PAGE; quotationsPage(); };
+  if (report.scrollToList) {
+    report.scrollToList = false;
+    document.getElementById('allQuotes').scrollIntoView({ block: 'start' });
+  }
   root.querySelectorAll('tr.link').forEach((row) => {
     row.onclick = (event) => { if (!event.target.closest('a')) location.hash = `#/bill/${row.dataset.id}`; };
   });
@@ -1499,7 +1618,11 @@ const methodChoice = `<fieldset class="choices pair"><legend>Paid by</legend><di
   <label><input type="radio" name="method" value="online"><span>Online</span></label>
 </div></fieldset>`;
 const removeButton = (kind, id) => (me.role === 'admin' ? `<button class="btn small danger" data-delete="${kind}" data-id="${id}" aria-label="Delete entry">×</button>` : '');
-const stat = (label, value, hot) => `<div class="stat ${hot ? 'hot' : ''}"><small>${esc(label)}</small><b>${esc(value)}</b></div>`;
+// A tile with somewhere to go becomes a button that opens the matching list.
+const stat = (label, value, hot, note, go) => {
+  const inner = `<small>${esc(label)}</small><b>${esc(value)}</b>${note ? `<span class="stat-note">${esc(note)}</span>` : ''}`;
+  return go ? `<button type="button" class="stat tap ${hot ? 'hot' : ''}" data-go="${go}" aria-label="${esc(label)} ${esc(value)}. Show the list.">${inner}</button>` : `<div class="stat ${hot ? 'hot' : ''}">${inner}</div>`;
+};
 
 // Connects add and delete buttons on a money page.
 function wireMoneyPage(redraw) {
@@ -1526,15 +1649,16 @@ function wireMoneyPage(redraw) {
 const projectBadge = (status) => `<span class="badge ${status === 'completed' ? 'q-won' : 'q-waiting'}">${status === 'completed' ? 'Completed' : 'In progress'}</span>`;
 const profitLabel = (status) => (status === 'completed' ? 'Confirmed profit' : 'Expected profit');
 
-const PROJECT_FILTERS = [['all', 'All'], ['running', 'In progress'], ['collect', 'Money to collect'], ['pay', 'Costs to pay'], ['completed', 'Completed']];
+const PROJECT_FILTERS = [['action', 'Needs action'], ['all', 'All'], ['running', 'In progress'], ['collect', 'Money to collect'], ['pay', 'Costs to pay'], ['completed', 'Completed']];
 const PROJECT_TESTS = {
+  action: (project) => project.status !== 'completed' || project.balance > 0 || project.vendorDue > 0,
   all: () => true,
   running: (project) => project.status !== 'completed',
   collect: (project) => project.balance > 0,
   pay: (project) => project.vendorDue > 0,
   completed: (project) => project.status === 'completed',
 };
-const projectList = { filter: 'all', view: 'board' };
+const projectList = { filter: 'action', view: 'board' };
 const BOARD_MIN_WIDTH = 1240;
 const BOARD_ROWS = 5;
 
@@ -1575,17 +1699,17 @@ async function projectsPage() {
       <td class="n">${money(p.vendorCost)}</td><td class="n ${p.profit < 0 ? 'loss' : 'gain'}">${money(p.profit)}</td>
     </tr>`).join('');
   shell('projects', `
-    <div class="head"><h1>Projects</h1>${roomForBoard ? chips('projectView', 'Project layout', [['board', 'Board'], ['list', 'List']], projectList.view) : ''}</div>
+    <div class="head"><h1>Projects</h1>${roomForBoard ? iconToggle('projectView', 'Project layout', [['board', 'Board', 'board'], ['list', 'List', 'list']], projectList.view) : ''}</div>
     <div class="stats">
-      ${stat('Still to collect', wholeMoney(total('balance')), true)}
-      ${stat('Costs still to pay', wholeMoney(total('vendorDue')))}
-      ${stat('Confirmed profit', wholeMoney(total('profit', finished)))}
-      ${stat('In progress', String(projects.length - finished.length))}
+      ${stat('Still to collect', wholeMoney(total('balance')), true, '', 'projects:collect')}
+      ${stat('Costs still to pay', wholeMoney(total('vendorDue')), false, '', 'projects:pay')}
+      ${stat('Confirmed profit', wholeMoney(total('profit', finished)), false, '', 'projects:completed')}
+      ${stat('In progress', String(projects.length - finished.length), false, '', 'projects:running')}
     </div>
     ${showBoard ? projectBoard(projects) : `${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
     <div class="card scroll">
       ${shown.length ? `<table class="compact"><tr><th>Bill</th><th>Customer</th><th>Status</th><th>Order accepted</th><th class="n">Bill total</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Costs</th><th class="n">Profit</th></tr>${rows}</table>`
-    : `<p class="muted">${projects.length ? 'No projects match this filter.' : 'Quotations appear here as projects once they are marked as won.'}</p>`}
+    : `<p class="muted">${projects.length ? (projectList.filter === 'action' ? 'Nothing needs action. Every project is finished and settled.' : 'No projects match this filter.') : 'Quotations appear here as projects once they are marked as won.'}</p>`}
     </div>`}`);
   if (roomForBoard) wireChips('projectView', (view) => { projectList.view = view; projectsPage(); });
   if (!showBoard) wireChips('projectFilter', (filter) => { projectList.filter = filter; projectsPage(); });
@@ -1629,9 +1753,9 @@ async function projectPage(id) {
     </div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Balance to collect', wholeMoney(p.balance), true)}
-      ${stat('Received', wholeMoney(p.received))}
-      ${stat('Project costs', wholeMoney(p.vendorCost))}
+      ${stat('Balance to collect', wholeMoney(p.balance), true, '', 'tab:customer')}
+      ${stat('Received', wholeMoney(p.received), false, '', 'tab:customer')}
+      ${stat('Project costs', wholeMoney(p.vendorCost), false, '', 'tab:costs')}
       ${stat(profitLabel(p.status), wholeMoney(p.profit))}
     </div>
     <nav class="tabs" aria-label="Project sections">
@@ -1767,7 +1891,7 @@ async function accountsPage() {
       ${stat('Left over this month', wholeMoney(a.leftOver), true)}
       ${stat('Money in', wholeMoney(a.moneyIn))}
       ${stat('Project costs paid', wholeMoney(a.vendorPaid))}
-      ${stat('Shop expenses', wholeMoney(a.expensesTotal))}
+      ${stat('Shop expenses', wholeMoney(a.expensesTotal), false, '', 'scroll:shopExpenses')}
     </div>
     <div class="card">
       <div class="split">
@@ -1785,7 +1909,7 @@ async function accountsPage() {
       <p class="muted" style="margin-bottom:0">Money in includes GST collected from customers, so left over is not the same as profit.</p>
     </div>
     <div class="card">
-      <div class="card-head"><h2>Shop expenses</h2><button type="button" class="btn main" data-quick="expense">+ Add Expense</button></div>
+      <div class="card-head" id="shopExpenses"><h2>Shop expenses</h2><button type="button" class="btn main" data-quick="expense">+ Add Expense</button></div>
       ${a.expenses.length ? `<div class="scroll"><table class="ledger"><tr><th>Date</th><th>Category</th><th>Details</th><th>Paid by</th><th>Added by</th><th class="n">Amount</th><th></th></tr>${rows}</table></div>` : ''}
     </div>`);
   document.getElementById('month').onchange = (event) => {
@@ -1797,8 +1921,21 @@ async function accountsPage() {
 }
 
 // ----- Investment -----
+// A person keeps the same colour however the amounts change, so colours follow the user list order.
+const PERSON_COLOURS = ['var(--split-glass)', 'var(--split-installation)', 'var(--split-transport)', 'var(--split-other)', 'var(--split-shop)', 'var(--split-left)'];
+
 async function investmentPage() {
   const data = await api('/api/investments');
+  // Whole percentages that always add up to 100: the largest leftovers get the spare points.
+  const shares = new Map();
+  if (data.total > 0) {
+    const exact = data.byPerson.map((p) => ({ person: p.person, value: (p.amount / data.total) * 100 }));
+    exact.forEach((e) => shares.set(e.person, Math.floor(e.value)));
+    const spare = 100 - [...shares.values()].reduce((sum, value) => sum + value, 0);
+    [...exact].sort((x, y) => (y.value % 1) - (x.value % 1)).slice(0, spare).forEach((e) => shares.set(e.person, shares.get(e.person) + 1));
+  }
+  const order = [...data.people, ...data.byPerson.map((p) => p.person).filter((name) => !data.people.includes(name)).sort()];
+  const colour = (person) => PERSON_COLOURS[order.indexOf(person) % PERSON_COLOURS.length];
   const rows = data.entries.map((x) => `
     <tr><td>${shortDate(x.date)}</td><td>${esc(x.person)}</td><td>${esc(x.paid_for)}</td><td>${methodBadge(x.method)}</td><td>${esc(x.note)}</td><td class="n">${money(x.amount)}</td><td>${removeButton('investments', x.id)}</td></tr>`).join('');
   shell('investment', `
@@ -1806,12 +1943,21 @@ async function investmentPage() {
     <div id="msg"></div>
     <div class="stats">
       ${stat('Total invested', wholeMoney(data.total), true)}
-      ${data.byPerson.slice(0, 3).map((p) => stat(p.person, money(p.amount))).join('')}
+      ${data.byPerson.slice(0, 3).map((p) => stat(p.person, wholeMoney(p.amount), false, `${shares.get(p.person) ?? 0}% share`)).join('')}
     </div>
-    <div class="card">
-      <h2>Paid for</h2>
-      <div class="totals plain wide">
-        ${data.byPurpose.map((p) => `<div><span>${esc(p.paidFor)}</span><span>${money(p.amount)}</span></div>`).join('') || '<p class="muted">Nothing added yet.</p>'}
+    <div class="charts">
+      <div class="card chart">
+        <div class="chart-head"><h2>Share of investment</h2></div>
+        ${data.total > 0 ? `<div class="split-bar" role="img" aria-label="Share of investment, listed below">${data.byPerson.map((p) => `<i title="${esc(p.person)} ${shares.get(p.person)}%" style="flex-grow:${p.amount / data.total};background:${colour(p.person)}"></i>`).join('')}</div>
+        <div class="split-list">${data.byPerson.map((p) => `<div><i style="background:${colour(p.person)}"></i><span>${esc(p.person)}</span><b>${esc(wholeMoney(p.amount))}</b><small>${shares.get(p.person)}%</small></div>`).join('')}</div>
+        <p class="muted split-help">Based on the money each person put in. Your partnership agreement decides how profit is shared.</p>`
+    : '<p class="muted chart-empty">Nothing added yet.</p>'}
+      </div>
+      <div class="card">
+        <h2>Paid for</h2>
+        <div class="totals plain">
+          ${data.byPurpose.map((p) => `<div><span>${esc(p.paidFor)}</span><span>${wholeMoney(p.amount)}</span></div>`).join('') || '<p class="muted">Nothing added yet.</p>'}
+        </div>
       </div>
     </div>
     <div class="card">
@@ -1820,6 +1966,84 @@ async function investmentPage() {
     </div>`);
   wireMoneyPage(investmentPage);
 }
+
+// ----- Search -----
+// Finds a bill by customer, phone or number from any page. A won order opens as its project.
+function openSearch() {
+  if (document.querySelector('.search-pop')) return;
+  const returnFocus = document.activeElement;
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay quick-overlay search-overlay';
+  overlay.innerHTML = `<div class="dialog quick search-pop" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.500-3.500"/></svg>
+      <input type="search" id="searchInput" placeholder="Customer, phone or bill number" autocomplete="off" aria-label="Search bills and customers">
+      <button type="button" class="quick-close" aria-label="Close">×</button></div>
+    <div id="searchResults" role="listbox" aria-label="Results"><p class="muted search-hint">Type at least 2 letters or digits.</p></div>
+  </div>`;
+  document.body.append(overlay);
+  const input = overlay.querySelector('#searchInput');
+  const results = overlay.querySelector('#searchResults');
+  let found = [];
+  let active = 0;
+  let timer;
+  let ticket = 0;
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    returnFocus?.focus?.();
+  };
+  const target = (b) => (b.status === 'approved' && b.quoteStatus === 'won' && !b.supersededBy ? `#/project/${b.id}` : `#/bill/${b.id}`);
+  const open = (b) => { close(); location.hash = target(b); };
+  const draw = () => {
+    results.innerHTML = found.length ? found.map((b, index) => `<a class="search-row ${index === active ? 'on' : ''}" role="option" aria-selected="${index === active}" href="${target(b)}" data-index="${index}">
+      <span><b>${esc(b.customerName || 'No name')}</b><small>${esc(b.number || `Draft ${b.id}`)}${b.customerPhone ? ` · ${esc(b.customerPhone)}` : ''}</small></span>
+      ${billBadge(b)}<em>${money(b.totals.grandTotal)}</em></a>`).join('') : `<p class="muted search-hint">${input.value.trim().length < 2 ? 'Type at least 2 letters or digits.' : 'Nothing found. Try part of the name or the last digits of the phone.'}</p>`;
+    results.querySelectorAll('.search-row').forEach((row) => {
+      row.onclick = (event) => { event.preventDefault(); open(found[row.dataset.index]); };
+    });
+  };
+  input.oninput = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const query = input.value.trim();
+      ticket += 1;
+      const mine = ticket;
+      const list = query.length < 2 ? [] : (await api(`/api/bills?${new URLSearchParams({ q: query, status: 'all', limit: '8' })}`).catch(() => ({ bills: [] }))).bills;
+      if (mine !== ticket) return;
+      found = list;
+      active = 0;
+      draw();
+    }, 180);
+  };
+  function onKey(event) {
+    if (event.key === 'Escape') close();
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!found.length) return;
+      active = (active + (event.key === 'ArrowDown' ? 1 : found.length - 1)) % found.length;
+      draw();
+      results.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+    }
+    if (event.key === 'Enter' && found[active]) {
+      event.preventDefault();
+      open(found[active]);
+    }
+  }
+  document.addEventListener('keydown', onKey);
+  overlay.onclick = (event) => { if (event.target === overlay) close(); };
+  overlay.querySelector('.quick-close').onclick = close;
+  input.focus();
+}
+
+// Cmd+K or Ctrl+K opens search anywhere. So does /, unless someone is typing.
+document.addEventListener('keydown', (event) => {
+  if (!me || document.querySelector('.dialog-overlay')) return;
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  if (((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') || (event.key === '/' && !typing)) {
+    event.preventDefault();
+    openSearch();
+  }
+});
 
 // ----- Quick add -----
 // Records everyday money from any page, using the same saves as the full pages.

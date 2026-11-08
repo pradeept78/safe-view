@@ -372,8 +372,10 @@ function createApp(db, { limits = { login: 10, enquiry: 5 }, notify = createNoti
     const search = text(req.query.q, 80);
     const like = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
     const where = `${BILL_FILTERS[status]} AND (? = '' OR customer_name LIKE ? ESCAPE '\\' OR customer_phone LIKE ? ESCAPE '\\'
-      OR number LIKE ? ESCAPE '\\' OR invoice_number LIKE ? ESCAPE '\\')`;
-    const params = [search, like, like, like, like];
+      OR number LIKE ? ESCAPE '\\' OR invoice_number LIKE ? ESCAPE '\\'
+      OR (? <> '' AND replace(customer_phone, ' ', '') LIKE ? ESCAPE '\\'))`;
+    const digits = search.replace(/\s/g, '');
+    const params = [search, like, like, like, like, digits, `%${digits.replace(/[\\%_]/g, '\\$&')}%`];
     res.json({
       bills: db.prepare(`SELECT * FROM bills WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset).map(presentBill),
       total: db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE ${where}`).get(...params).n,
