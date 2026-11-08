@@ -888,3 +888,51 @@ button.stat.hot{color:#fff}
   .scroll table.activity-log td[data-label="Who"]{order:3;flex:0 0 100%}
 }
 .earned-note{margin:10px 0 0;font-size:12.5px}
+
+/* Summary tiles share one look: a coloured dot and value, like the Overview */
+.stat{--tone:var(--ink)}
+.stat.blue{--tone:var(--blue-fg)}.stat.green{--tone:var(--green-fg)}.stat.amber{--tone:var(--amber-fg)}.stat.red{--tone:var(--red-fg)}
+.stat small{display:flex;align-items:center;gap:7px}
+.stat.blue small::before,.stat.green small::before,.stat.amber small::before,.stat.red small::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--tone);flex:none}
+.stat b{color:var(--tone)}
+/* Lost reasons are losses, so their bars are red */
+.reason .bar span{background:var(--red-fg)}
+
+/* Enquiries as cards in a grid */
+.enq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;align-items:start}
+.enq-grid .enq{margin:0;gap:10px}
+.enq.closed{opacity:.75}
+.enq-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.enq-top b{display:block;font-size:15px}
+.enq-top small{display:block;margin-top:1px;font-size:12px}
+.enq-service{justify-self:start;text-transform:none}
+.enq-message{margin:0;padding:10px 12px;border-left:3px solid var(--gold);border-radius:0 8px 8px 0;background:var(--soft);font-size:14px;overflow-wrap:anywhere}
+.enq-contact{display:flex;flex-wrap:wrap;gap:8px}
+.enq-contact .btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.enq .acts{justify-content:flex-start;padding-top:10px;border-top:1px solid var(--line)}
+@media (max-width:640px){
+  .enq-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+  .enq .acts .btn,.enq-contact .btn{flex:1 1 0;min-height:44px;white-space:nowrap}
+}
+@media (max-width:860px){.sheet-panel{max-height:calc(100dvh - 61px - env(safe-area-inset-bottom) - 96px);overflow-y:auto;overscroll-behavior:contain}}
+
+/* iPhone Safari gives date boxes their own width and centred text, which pushed them past the column */
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+
+/* Folded glass lines on a phone */
+.line-summary,.line-done{display:none}
+@media (max-width:640px){
+  #lines tr.folded{display:block!important;padding:0!important}
+  #lines tr.folded>td:not(.line-summary),#lines tr.sub.folded{display:none!important}
+  #lines tr.folded>td.line-summary{display:block!important;padding:0}
+  #lines tr.folded>td.line-summary::before{display:none}
+  .line-open{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2px 10px;width:100%;min-height:56px;padding:10px 12px;border:0;border-radius:12px;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+  .line-open b{display:block;font-size:14px}
+  .line-open small{display:block;color:var(--muted);font-size:12.5px}
+  .line-open em{font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
+  .line-open .line-edit{grid-column:1/-1;color:var(--blue-fg);font-size:12.5px;font-weight:700}
+  #lines tr[data-i]:not(.folded) .line-done{display:inline-flex;margin-right:8px}
+  .insight-grid>.fold{margin:0}
+  .insight-grid>.fold[open]>summary{margin-bottom:10px}
+}

@@ -325,10 +325,10 @@ async function billsPage() {
   shell('bills', `
     <div class="head"><h1>Bills</h1><a class="btn main" href="#/bill/new">+ New Bill</a></div>
     <div class="stats">
-      <div class="stat hot"><small>Approved this month</small><b>${wholeMoney(stats.approvedThisMonth)}</b></div>
-      ${stat('Waiting for approval', String(stats.waiting), false, '', 'bills:pending')}
-      ${stat('Drafts', String(stats.drafts), false, '', 'bills:draft')}
-      ${stat('New enquiries', String(newEnquiries), false, '', '#/enquiries')}
+      ${stat('Approved this month', wholeMoney(stats.approvedThisMonth), 'blue')}
+      ${stat('Waiting for approval', String(stats.waiting), 'amber', '', 'bills:pending')}
+      ${stat('Drafts', String(stats.drafts), '', '', 'bills:draft')}
+      ${stat('New enquiries', String(newEnquiries), 'blue', '', '#/enquiries')}
     </div>
     ${me.role === 'admin' && stats.waiting ? `<div class="alert warn">${stats.waiting} bill${stats.waiting > 1 ? 's are' : ' is'} waiting for your approval.</div>` : ''}
     <div class="finder">
@@ -483,6 +483,15 @@ async function billPage(id) {
       </tr>`).join('')}`;
   }
 
+  // On a phone a finished glass line folds to one row, so a long bill stays short.
+  // Lines still missing a size stay open. A laptop always shows every box.
+  // The last worked-out amount of each line, kept while a new line is still being typed.
+  const lineAmounts = [];
+  const openLines = new Set(state.lines.map((line, i) => (!line.widthMm || !line.heightMm ? i : -1)).filter((i) => i >= 0));
+  const lineSummary = (line, i) => `<td class="line-summary"><button type="button" class="line-open" data-open="${i}" aria-label="Edit line ${i + 1}">
+    <span><b>${esc(line.glassName || 'Glass')}</b><small>${esc(line.widthMm)} × ${esc(line.heightMm)} mm · ${esc(line.qty)} ${Number(line.qty) === 1 ? 'piece' : 'pieces'} · ${money(line.rate || 0)}/sq m</small></span>
+    <em data-sum>${lineAmounts[i] === undefined ? '–' : money(lineAmounts[i])}</em><span class="line-edit">Edit</span></button></td>`;
+
   function drawLines() {
     if (!editable) {
       drawFixedLines();
@@ -491,9 +500,9 @@ async function billPage(id) {
     const options = (line) => `${glass.map((g) => `<option ${!line.custom && g.name === line.glassName ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}
       <option value="${OTHER}" ${line.custom ? 'selected' : ''}>Other (type manually)</option>`;
     document.getElementById('lines').innerHTML = `
-      <tr><th>Material</th><th>Width (mm)</th><th>Height (mm)</th><th>Qty</th><th>Rate / sq m</th><th>GST %</th><th class="n">Area</th><th class="n">Amount</th>${editable ? '<th></th>' : ''}</tr>
+      <tr><th>Material</th><th>Width (mm)</th><th>Height (mm)</th><th>Qty</th><th>Rate / sq m</th><th>GST %</th><th class="n">Area</th><th class="n">Amount</th>${editable ? '<th></th><th></th>' : ''}</tr>
       ${state.lines.map((line, i) => `
-        <tr data-i="${i}">
+        <tr data-i="${i}" class="${openLines.has(i) ? '' : 'folded'}">
           <td><select data-k="pick" aria-label="Material" ${off}>${options(line)}</select></td>
           <td><input data-k="widthMm" type="number" min="1" inputmode="decimal" aria-label="Width" value="${esc(line.widthMm)}" ${off}></td>
           <td><input data-k="heightMm" type="number" min="1" inputmode="decimal" aria-label="Height" value="${esc(line.heightMm)}" ${off}></td>
@@ -501,9 +510,10 @@ async function billPage(id) {
           <td><input data-k="rate" type="number" min="0" step="0.01" inputmode="decimal" aria-label="Rate" value="${esc(line.rate)}" ${off}><div class="hint" data-hint>${rateHint(line, i)}</div></td>
           <td><input data-k="gstPercent" type="number" min="0" max="100" step="0.01" inputmode="decimal" aria-label="GST percent" value="${esc(line.gstPercent)}" ${off}></td>
           <td class="n" data-area>–</td><td class="n" data-amount>–</td>
-          ${editable ? `<td><button class="btn small danger" data-remove="${i}" aria-label="Remove line">×</button></td>` : ''}
+          ${editable ? `<td><button class="btn small line-done" data-close="${i}">Done</button><button class="btn small danger" data-remove="${i}" aria-label="Remove line">×</button></td>` : ''}
+          ${lineSummary(line, i)}
         </tr>
-        ${line.custom ? `<tr class="sub" data-i="${i}"><td colspan="${editable ? 9 : 8}"><div class="sub-grid">
+        ${line.custom ? `<tr class="sub ${openLines.has(i) ? '' : 'folded'}" data-i="${i}"><td colspan="${editable ? 9 : 8}"><div class="sub-grid">
           <label>Material name<input data-k="glassName" value="${esc(line.glassName)}" ${off}></label>
           <label>HSN<input data-k="hsn" value="${esc(line.hsn)}" ${off}></label>
           <label>Thickness (mm)<input data-k="thicknessMm" type="number" min="0" step="0.1" value="${esc(line.thicknessMm)}" ${off}></label>
@@ -543,6 +553,9 @@ async function billPage(id) {
         if (!row) return;
         row.querySelector('[data-area]').textContent = line.areaSqm.toFixed(3);
         row.querySelector('[data-amount]').textContent = money(line.amount);
+        lineAmounts[i] = line.amount;
+        const summary = row.querySelector('[data-sum]');
+        if (summary) summary.textContent = money(line.amount);
       });
       const t = result.totals;
       document.getElementById('saveTotal').textContent = `Total ${money(t.grandTotal)}`;
@@ -677,6 +690,14 @@ async function billPage(id) {
       refreshSoon();
     });
     table.addEventListener('click', (event) => {
+      const toggle = event.target.closest('[data-open], [data-close]');
+      if (toggle) {
+        const index = Number(toggle.dataset.open ?? toggle.dataset.close);
+        if (toggle.dataset.open !== undefined) openLines.add(index); else openLines.delete(index);
+        drawLines();
+        refreshSoon();
+        return;
+      }
       const reset = event.target.dataset.reset;
       if (reset !== undefined) {
         state.lines[reset].rate = state.lines[reset].listRate;
@@ -687,12 +708,16 @@ async function billPage(id) {
       const index = event.target.dataset.remove;
       if (index === undefined || state.lines.length === 1) return;
       state.lines.splice(Number(index), 1);
+      lineAmounts.splice(Number(index), 1);
+      openLines.clear();
       drawLines();
       refreshSoon();
     });
     document.getElementById('addLine').onclick = () => {
       const last = state.lines[state.lines.length - 1];
       state.lines.push({ ...last, widthMm: '', heightMm: '', qty: 1 });
+      openLines.clear();
+      openLines.add(state.lines.length - 1);
       drawLines();
       refreshSoon();
     };
@@ -723,22 +748,46 @@ async function billPage(id) {
 }
 
 // ----- Enquiries -----
+// Open means new or contacted: the enquiries that still need work.
+const enquiryView = { filter: 'open' };
+const ENQUIRY_TESTS = { open: (e) => e.status !== 'closed', new: (e) => e.status === 'new', contacted: (e) => e.status === 'contacted', closed: (e) => e.status === 'closed', all: () => true };
+const whatsappLink = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length >= 10 ? `https://wa.me/${digits.length === 10 ? `91${digits}` : digits}` : '';
+};
+const PHONE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.500 1.500a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>';
+const CHAT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.400-4.200A8 8 0 1 1 8.200 18.600z"/></svg>';
+
 async function enquiriesPage() {
   const list = await api('/api/enquiries');
+  const count = (filter) => list.filter(ENQUIRY_TESTS[filter]).length;
+  const shown = list.filter(ENQUIRY_TESTS[enquiryView.filter]);
+  const card = (e) => {
+    const chat = whatsappLink(e.phone);
+    return `<div class="card enq ${e.status}">
+      <div class="enq-top">
+        <div><b>${esc(e.name)}</b><small class="muted">${esc(dayLabel(e.created_at))}, ${esc(new Date(e.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}</small></div>
+        <span class="badge ${esc(e.status)}">${esc(e.status)}</span>
+      </div>
+      ${e.service ? `<span class="badge type enq-service">${esc(e.service)}</span>` : ''}
+      ${e.message ? `<p class="enq-message">${esc(e.message)}</p>` : ''}
+      <div class="enq-contact">
+        <a class="btn small" href="tel:${esc(e.phone.replace(/[^+\d]/g, ''))}">${PHONE_ICON}<span>${esc(e.phone)}</span></a>
+        ${chat ? `<a class="btn small" href="${chat}" target="_blank" rel="noopener" aria-label="WhatsApp ${esc(e.name)}">${CHAT_ICON}<span>WhatsApp</span></a>` : ''}
+      </div>
+      <div class="acts">
+        ${e.status === 'closed' ? '' : `<button class="btn small main" data-quote="${e.id}">Make Quote</button>`}
+        ${e.status === 'new' ? `<button class="btn small" data-id="${e.id}" data-status="contacted">Contacted</button>` : ''}
+        ${e.status === 'closed' ? `<button class="btn small" data-id="${e.id}" data-status="contacted">Reopen</button>` : `<button class="btn small" data-id="${e.id}" data-status="closed">Close</button>`}
+      </div>
+    </div>`;
+  };
   shell('enquiries', `
     <div class="head"><h1>Website Enquiries</h1></div>
-    ${list.length ? list.map((e) => `
-      <div class="card enq">
-        <div class="head" style="margin:0"><b>${esc(e.name)}</b><span class="badge ${esc(e.status)}">${esc(e.status)}</span></div>
-        <div><a href="tel:${esc(e.phone.replace(/[^+\d]/g, ''))}">${esc(e.phone)}</a>${e.service ? ` · ${esc(e.service)}` : ''}</div>
-        ${e.message ? `<div>${esc(e.message)}</div>` : ''}
-        <div class="muted">${when(e.created_at)}</div>
-        <div class="acts">
-          ${e.status === 'closed' ? '' : `<button class="btn small main" data-quote="${e.id}">Make Quote</button>`}
-          <button class="btn small" data-id="${e.id}" data-status="contacted">Mark contacted</button>
-          <button class="btn small" data-id="${e.id}" data-status="closed">Close</button>
-        </div>
-      </div>`).join('') : '<div class="card"><p class="muted">No enquiries yet. They appear here when customers use the website form.</p></div>'}`);
+    ${list.length ? chips('enquiryFilter', 'Show enquiries', [['open', `Open (${count('open')})`], ['new', `New (${count('new')})`], ['contacted', 'Contacted'], ['closed', 'Closed'], ['all', 'All']], enquiryView.filter) : ''}
+    ${list.length ? (shown.length ? `<div class="enq-grid">${shown.map(card).join('')}</div>` : '<div class="card"><p class="muted" style="margin:0">Nothing here. Try another filter.</p></div>')
+    : '<div class="card"><p class="muted" style="margin:0">No enquiries yet. They appear here when customers use the website form.</p></div>'}`);
+  if (list.length) wireChips('enquiryFilter', (filter) => { enquiryView.filter = filter; enquiriesPage(); });
   root.querySelectorAll('[data-status]').forEach((button) => {
     button.onclick = async () => {
       await api(`/api/enquiries/${button.dataset.id}`, 'PUT', { status: button.dataset.status });
@@ -909,7 +958,7 @@ async function showEnquiryBadge() {
 
 // ----- Activity log -----
 const activityList = { items: [], total: 0, show: 'changes' };
-const activityQuery = (offset = 0) => `/api/activity?${new URLSearchParams({ limit: '25', offset: String(offset), ...(activityList.show === 'changes' ? { changes: '1' } : {}) })}`;
+const activityQuery = (offset = 0) => `/api/activity?${new URLSearchParams({ limit: window.innerWidth <= 640 ? '15' : '25', offset: String(offset), ...(activityList.show === 'changes' ? { changes: '1' } : {}) })}`;
 const dayLabel = (iso) => {
   const day = new Date(iso).toLocaleDateString('en-CA');
   const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
@@ -1417,18 +1466,18 @@ async function insightsPage() {
         ${rankList(i.owed.slice(0, 5), { name: (o) => o.customer, value: (o) => o.balance, note: (o) => `${o.number} · ${o.days} ${o.days === 1 ? 'day' : 'days'}`, link: (o) => `#/project/${o.id}` })}`
     : '<p class="muted" style="margin:0">Every project is fully paid.</p>'}
       </div>
-      <div class="card">
+      ${fold('Top customers', `      <div class="card">
         <div class="card-head"><h2>Top customers</h2><small class="muted">Before GST</small></div>
         ${rankList(i.topCustomers, { name: (c) => c.name, value: (c) => c.value, note: (c) => `${c.orders} ${c.orders === 1 ? 'order' : 'orders'}`, link: (c) => `#/project/${c.latestId}` })}
-      </div>
-      <div class="card">
+      </div>`)}
+      ${fold('Best-selling glass', `      <div class="card">
         <div class="card-head"><h2>Best-selling glass</h2><small class="muted">Before GST</small></div>
         ${rankList(i.materials, { name: (m) => m.name, value: (m) => m.value, note: (m) => `${m.areaSqm} sq m · ${m.bills} ${m.bills === 1 ? 'bill' : 'bills'}` })}
-      </div>
-      <div class="card">
+      </div>`)}
+      ${fold('Who you pay most', `      <div class="card">
         <div class="card-head"><h2>Who you pay most</h2><small class="muted">Project costs</small></div>
         ${rankList(i.topVendors, { name: (v) => v.name, value: (v) => v.billed, note: (v) => `${v.types.join(', ')}${v.unpaid > 0 ? ` · ${wholeMoney(v.unpaid)} unpaid` : ' · all paid'}` })}
-      </div>
+      </div>`)}
     </div>
     <p class="muted">Customers count from won orders. Glass and customer values leave out GST. Money owed includes GST, because that is what the customer pays.</p>`);
   if (roomForFour) {
@@ -1543,10 +1592,10 @@ async function quotationsPage() {
     </form>` : ''}
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Win rate', q.winRate === null ? 'No results yet' : `${q.winRate}%`, true)}
-      ${stat('Quotations sent', q.sent, false, '', 'quotes:all')}
-      ${stat('Won', q.won, false, '', 'quotes:won')}
-      ${stat('Lost', q.lost, false, '', 'quotes:lost')}
+      ${stat('Win rate', q.winRate === null ? 'No results yet' : `${q.winRate}%`, 'blue')}
+      ${stat('Quotations sent', q.sent, '', '', 'quotes:all')}
+      ${stat('Won', q.won, 'green', '', 'quotes:won')}
+      ${stat('Lost', q.lost, 'red', '', 'quotes:lost')}
     </div>
     ${fold('Value and lost reasons', `    <div class="card">
       <div class="split">
@@ -1619,9 +1668,10 @@ const methodChoice = `<fieldset class="choices pair"><legend>Paid by</legend><di
 </div></fieldset>`;
 const removeButton = (kind, id) => (me.role === 'admin' ? `<button class="btn small danger" data-delete="${kind}" data-id="${id}" aria-label="Delete entry">×</button>` : '');
 // A tile with somewhere to go becomes a button that opens the matching list.
-const stat = (label, value, hot, note, go) => {
+// Every summary tile looks the same: a coloured dot and value that say what kind of number it is.
+const stat = (label, value, tone = '', note, go) => {
   const inner = `<small>${esc(label)}</small><b>${esc(value)}</b>${note ? `<span class="stat-note">${esc(note)}</span>` : ''}`;
-  return go ? `<button type="button" class="stat tap ${hot ? 'hot' : ''}" data-go="${go}" aria-label="${esc(label)} ${esc(value)}. Show the list.">${inner}</button>` : `<div class="stat ${hot ? 'hot' : ''}">${inner}</div>`;
+  return go ? `<button type="button" class="stat tap ${tone}" data-go="${go}" aria-label="${esc(label)} ${esc(value)}. Show the list.">${inner}</button>` : `<div class="stat ${tone}">${inner}</div>`;
 };
 
 // Connects add and delete buttons on a money page.
@@ -1701,10 +1751,10 @@ async function projectsPage() {
   shell('projects', `
     <div class="head"><h1>Projects</h1>${roomForBoard ? iconToggle('projectView', 'Project layout', [['board', 'Board', 'board'], ['list', 'List', 'list']], projectList.view) : ''}</div>
     <div class="stats">
-      ${stat('Still to collect', wholeMoney(total('balance')), true, '', 'projects:collect')}
-      ${stat('Costs still to pay', wholeMoney(total('vendorDue')), false, '', 'projects:pay')}
-      ${stat('Confirmed profit', wholeMoney(total('profit', finished)), false, '', 'projects:completed')}
-      ${stat('In progress', String(projects.length - finished.length), false, '', 'projects:running')}
+      ${stat('Still to collect', wholeMoney(total('balance')), 'red', '', 'projects:collect')}
+      ${stat('Costs still to pay', wholeMoney(total('vendorDue')), 'amber', '', 'projects:pay')}
+      ${stat('Confirmed profit', wholeMoney(total('profit', finished)), total('profit', finished) < 0 ? 'red' : 'green', '', 'projects:completed')}
+      ${stat('In progress', String(projects.length - finished.length), 'blue', '', 'projects:running')}
     </div>
     ${showBoard ? projectBoard(projects) : `${chips('projectFilter', 'Show projects', PROJECT_FILTERS, projectList.filter)}
     <div class="card scroll">
@@ -1753,10 +1803,10 @@ async function projectPage(id) {
     </div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Balance to collect', wholeMoney(p.balance), true, '', 'tab:customer')}
-      ${stat('Received', wholeMoney(p.received), false, '', 'tab:customer')}
-      ${stat('Project costs', wholeMoney(p.vendorCost), false, '', 'tab:costs')}
-      ${stat(profitLabel(p.status), wholeMoney(p.profit))}
+      ${stat('Balance to collect', wholeMoney(p.balance), p.balance > 0 ? 'red' : 'green', '', 'tab:customer')}
+      ${stat('Received', wholeMoney(p.received), 'blue', '', 'tab:customer')}
+      ${stat('Project costs', wholeMoney(p.vendorCost), 'amber', '', 'tab:costs')}
+      ${stat(profitLabel(p.status), wholeMoney(p.profit), p.profit < 0 ? 'red' : 'green')}
     </div>
     <nav class="tabs" aria-label="Project sections">
       ${PROJECT_TABS.map(([name, label]) => `<button type="button" data-tab="${name}" ${projectView.tab === name ? 'aria-current="true"' : ''}>${label}</button>`).join('')}
@@ -1888,10 +1938,10 @@ async function accountsPage() {
     </div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Left over this month', wholeMoney(a.leftOver), true)}
-      ${stat('Money in', wholeMoney(a.moneyIn))}
-      ${stat('Project costs paid', wholeMoney(a.vendorPaid))}
-      ${stat('Shop expenses', wholeMoney(a.expensesTotal), false, '', 'scroll:shopExpenses')}
+      ${stat('Left over this month', wholeMoney(a.leftOver), a.leftOver < 0 ? 'red' : 'green')}
+      ${stat('Money in', wholeMoney(a.moneyIn), 'blue')}
+      ${stat('Project costs paid', wholeMoney(a.vendorPaid), 'amber')}
+      ${stat('Shop expenses', wholeMoney(a.expensesTotal), 'red', '', 'scroll:shopExpenses')}
     </div>
     <div class="card">
       <div class="split">
@@ -1942,8 +1992,8 @@ async function investmentPage() {
     <div class="head"><h1>Shop Investment</h1></div>
     <div id="msg"></div>
     <div class="stats">
-      ${stat('Total invested', wholeMoney(data.total), true)}
-      ${data.byPerson.slice(0, 3).map((p) => stat(p.person, wholeMoney(p.amount), false, `${shares.get(p.person) ?? 0}% share`)).join('')}
+      ${stat('Total invested', wholeMoney(data.total), 'blue')}
+      ${data.byPerson.slice(0, 3).map((p) => stat(p.person, wholeMoney(p.amount), '', `${shares.get(p.person) ?? 0}% share`)).join('')}
     </div>
     <div class="charts">
       <div class="card chart">
