@@ -936,3 +936,12 @@ input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
   .insight-grid>.fold{margin:0}
   .insight-grid>.fold[open]>summary{margin-bottom:10px}
 }
+
+/* On a phone Quick add is a round + beside search, so it does not compete with the page's own main button */
+@media (max-width:860px){
+  .side .quick-btn{width:44px;height:44px;min-height:44px;padding:0;margin-left:8px;border-radius:12px}
+  .side .quick-btn .quick-label{display:none}
+  .side .quick-btn .quick-plus{font-size:24px;font-weight:600}
+}
+/* Plain tiles get a quiet grey dot, so every tile has the same shape */
+.stat:not(.blue):not(.green):not(.amber):not(.red) small::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none;opacity:.6}

@@ -84,7 +84,7 @@ function shell(active, content) {
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
         <button type="button" class="search-btn" id="searchBtn" aria-label="Search bills and customers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.500-3.500"/></svg><span>Search</span><kbd>⌘K</kbd></button>
-        <button type="button" class="quick-btn" id="quickAdd"><span aria-hidden="true">+</span> Quick add</button>
+        <button type="button" class="quick-btn" id="quickAdd" aria-label="Quick add" title="Quick add"><span class="quick-plus" aria-hidden="true">+</span><span class="quick-label">Quick add</span></button>
         <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('insights', 'Insights')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <a class="avatar" href="#/account" aria-label="My Account">${esc(me.name.charAt(0).toUpperCase())}</a>
