@@ -123,11 +123,12 @@ function registerInsights(app, { db, requireLogin }) {
     if (lost && lost.n >= 2) {
       notices.push({ tone: 'neutral', title: `Most lost orders: ${lost.reason} (${lost.n})`, detail: 'Counted over the last 90 days.', link: '#/quotations' });
     }
-    if (topCustomers[0]) {
+    // Ranking needs at least two to compare, or the finding says nothing useful.
+    if (topCustomers.length >= 2) {
       const best = topCustomers[0];
       notices.push({ tone: 'green', title: `Top customer: ${best.name}`, detail: `${rupees(best.value)} from ${best.orders} ${best.orders === 1 ? 'order' : 'orders'}, before GST.`, link: `#/project/${best.latestId}` });
     }
-    if (materials[0]) {
+    if (materials.length >= 2) {
       notices.push({ tone: 'neutral', title: `Best-selling glass: ${materials[0].name}`, detail: `${materials[0].areaSqm} sq m sold for ${rupees(materials[0].value)}.`, link: '#/rates' });
     }
 
