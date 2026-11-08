@@ -36,6 +36,7 @@ async function api(url, method = 'GET', body) {
 const ICONS = {
   bills: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
   enquiries: '<path d="M4 5h16v11H9l-5 4zM8 10h8"/>',
+  insights: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.500 10.900c.6.5 1 1.200 1 2.100h5c0-.9.4-1.600 1-2.100A6 6 0 0 0 12 3z"/>',
   overview: '<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 7h6V4h-6zM4 20h6v-3H4z"/>',
   quotations: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13l2 2 4-4"/>',
   projects: '<path d="M3 7h7l2 3h9v10H3zM3 7V4h6l2 3"/>',
@@ -54,7 +55,7 @@ const THEME_ICONS = `<svg class="theme-icon theme-to-dark" viewBox="0 0 24 24" a
 function shell(active, content) {
   const link = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
   const tab = (hash, label) => `<a href="#/${hash}" class="${active === hash ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[hash]}</svg>${label}</a>`;
-  const more = [['accounts', 'Monthly Accounts'], ['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
+  const more = [['insights', 'Insights'], ['accounts', 'Monthly Accounts'], ['investment', 'Investment'], ['enquiries', 'Enquiries'], ['rates', 'Materials & Rates'], ...(me.role === 'admin' ? [['users', 'Users'], ['activity', 'Activity']] : []), ['settings', 'Settings'], ['account', 'My Account']];
   const moreActive = more.some(([hash]) => hash === active);
   const navScroll = root.querySelector('.side nav')?.scrollTop || 0;
   root.innerHTML = `
@@ -62,7 +63,7 @@ function shell(active, content) {
       <aside class="side">
         <img src="/img/word-t.png" alt="Safe View Glass Solutions">
         <button type="button" class="quick-btn" id="quickAdd"><span aria-hidden="true">+</span> Quick add</button>
-        <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
+        <nav aria-label="Dashboard">${link('overview', 'Overview')}${link('insights', 'Insights')}${link('bills', 'Bills')}${link('quotations', 'Quotations')}${link('projects', 'Projects')}${link('accounts', 'Monthly Accounts')}${link('investment', 'Investment')}${link('enquiries', 'Enquiries')}${link('rates', 'Materials & Rates')}${me.role === 'admin' ? link('users', 'Users') + link('activity', 'Activity') : ''}${link('settings', 'Settings')}${link('account', 'My Account')}</nav>
         <div class="who">
           <a class="avatar" href="#/account" aria-label="My Account">${esc(me.name.charAt(0).toUpperCase())}</a>
           <div><b>${esc(me.name)}</b><span>${me.role === 'admin' ? 'Admin' : 'Partner'}</span></div>
@@ -1283,8 +1284,61 @@ function splitCard(o) {
   </div>`;
 }
 
+const CHEVRON = '<svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+
+// Findings from the server, each one a link to the page where it can be acted on.
+const noticeList = (notices) => (notices.length ? `<div class="notices">${notices.map((n) => `
+  <a class="notice ${esc(n.tone)}" href="${esc(n.link)}"><i aria-hidden="true"></i><span><b>${esc(n.title)}</b><small>${esc(n.detail)}</small></span>${CHEVRON}</a>`).join('')}</div>`
+  : '<p class="muted" style="margin:0">Nothing to flag right now. Findings appear as you win orders and record money.</p>');
+
+// A ranked list with a bar, so the biggest names stand out at a glance.
+function rankList(rows, { name, value, note, link }) {
+  if (!rows.length) return '<p class="muted" style="margin:0">Nothing to show yet.</p>';
+  const top = Math.max(...rows.map(value), 1);
+  return `<div class="ranks">${rows.map((row) => {
+    const inner = `<span class="rank-text"><b>${esc(name(row))}</b><small>${esc(note(row))}</small></span>
+      <b class="rank-value">${esc(wholeMoney(value(row)))}</b>
+      <span class="rank-bar" aria-hidden="true"><i style="width:${Math.max(2, Math.round((value(row) / top) * 100))}%"></i></span>`;
+    return link ? `<a class="rank" href="${esc(link(row))}">${inner}</a>` : `<div class="rank">${inner}</div>`;
+  }).join('')}</div>`;
+}
+
+async function insightsPage() {
+  const i = await api('/api/insights');
+  const owedTotal = i.aging.reduce((sum, band) => sum + band.amount, 0);
+  shell('insights', `
+    <div class="head"><h1>Insights</h1></div>
+    <div class="card">
+      <h2>Things worth noticing</h2>
+      ${noticeList(i.notices)}
+    </div>
+    <div class="insight-grid">
+      <div class="card">
+        <div class="card-head"><h2>Money owed by age</h2><b>${esc(wholeMoney(owedTotal))}</b></div>
+        ${owedTotal > 0 ? `<div class="split-bar" role="img" aria-label="Money owed by age, listed below">${i.aging.filter((band) => band.amount > 0).map((band) => `<i class="age ${band.tone}" style="flex-grow:${band.amount / owedTotal}" title="${esc(band.label)} ${esc(wholeMoney(band.amount))}"></i>`).join('')}</div>
+        <div class="age-list">${i.aging.map((band) => `<div><i class="age ${band.tone}"></i><span>${esc(band.label)}</span><small>${band.count} ${band.count === 1 ? 'project' : 'projects'}</small><b>${esc(wholeMoney(band.amount))}</b></div>`).join('')}</div>
+        <h3 class="sub-head">Waiting longest</h3>
+        ${rankList(i.owed.slice(0, 5), { name: (o) => o.customer, value: (o) => o.balance, note: (o) => `${o.number} · ${o.days} ${o.days === 1 ? 'day' : 'days'}`, link: (o) => `#/project/${o.id}` })}`
+    : '<p class="muted" style="margin:0">Every project is fully paid.</p>'}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Top customers</h2><small class="muted">Before GST</small></div>
+        ${rankList(i.topCustomers, { name: (c) => c.name, value: (c) => c.value, note: (c) => `${c.orders} ${c.orders === 1 ? 'order' : 'orders'}`, link: (c) => `#/project/${c.latestId}` })}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Best-selling glass</h2><small class="muted">Before GST</small></div>
+        ${rankList(i.materials, { name: (m) => m.name, value: (m) => m.value, note: (m) => `${m.areaSqm} sq m · ${m.bills} ${m.bills === 1 ? 'bill' : 'bills'}` })}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Who you pay most</h2><small class="muted">Project costs</small></div>
+        ${rankList(i.topVendors, { name: (v) => v.name, value: (v) => v.billed, note: (v) => `${v.types.join(', ')}${v.unpaid > 0 ? ` · ${wholeMoney(v.unpaid)} unpaid` : ' · all paid'}` })}
+      </div>
+    </div>
+    <p class="muted">Customers count from won orders. Glass and customer values leave out GST. Money owed includes GST, because that is what the customer pays.</p>`);
+}
+
 async function overviewPage() {
-  const o = await api('/api/overview');
+  const [o, insights] = await Promise.all([api('/api/overview'), api('/api/insights')]);
   const row = (label, value, strong) => `<div class="${strong ? 'strong' : ''}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
   const decided = o.won + o.lost;
   const tableRows = o.months.map((m) => `<tr><td>${esc(monthLong(m.month))}</td><td class="n">${money(m.sales)}</td><td class="n">${money(m.confirmedProfit)}</td><td class="n">${money(m.expenses)}</td><td class="n">${money(m.net)}</td></tr>`).join('');
@@ -1295,6 +1349,10 @@ async function overviewPage() {
       ${kpi('Confirmed profit', wholeMoney(o.confirmedProfit), `${o.completed} completed`, o.confirmedProfit < 0 ? 'red' : 'green')}
       ${kpi('Expected profit', wholeMoney(o.expectedProfit), `${o.inProgress} in progress`, o.expectedProfit < 0 ? 'red' : 'amber')}
       ${kpi('Money to collect', wholeMoney(o.toCollect), `${wholeMoney(o.received)} received of ${wholeMoney(o.billed)}`, 'red')}
+    </div>
+    <div class="card notices-card">
+      <div class="card-head"><h2>Things worth noticing</h2><a class="see-all" href="#/insights">See all insights →</a></div>
+      ${noticeList(insights.notices.slice(0, 3))}
     </div>
     <div class="charts">
       ${trendCard(o.months)}
@@ -1948,6 +2006,7 @@ async function route() {
   const [page, id] = location.hash.replace(/^#\//, '').split('/');
   try {
     if (page === 'bill') await billPage(id);
+    else if (page === 'insights') await insightsPage();
     else if (page === 'bills') await billsPage();
     else if (page === 'quotations') await quotationsPage();
     else if (page === 'projects') await projectsPage();
