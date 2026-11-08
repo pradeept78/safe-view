@@ -53,7 +53,15 @@ test('an empty shop has no findings and empty lists', async () => {
   assert.deepEqual(body.topCustomers, []);
 });
 
+test('one customer or one glass type is not ranked as a finding', async () => {
+  await wonOrder('Only Customer', [line('5MM GLASS', 1000)], 3);
+  const { body } = await call('GET', '/api/insights');
+  assert.ok(!body.notices.some((n) => n.title.startsWith('Top customer')));
+  assert.ok(!body.notices.some((n) => n.title.startsWith('Best-selling glass')));
+});
+
 test('money owed is sorted into age bands, oldest first', async () => {
+  const before = (await call('GET', '/api/insights')).body.aging.map((band) => band.count);
   const fresh = await wonOrder('Fresh Customer', [line('5MM GLASS', 1000)], 5);
   const late = await wonOrder('Late Customer', [line('5MM GLASS', 1000)], 45);
   const old = await wonOrder('Old Customer', [line('5MM GLASS', 1000)], 90);
@@ -61,8 +69,9 @@ test('money owed is sorted into age bands, oldest first', async () => {
   const { body: project } = await call('GET', `/api/projects/${paid}`);
   await call('POST', `/api/projects/${paid}/payments`, { date: ago(1), amount: project.balance, method: 'cash' });
   const { body } = await call('GET', '/api/insights');
-  assert.deepEqual(body.aging.map((band) => band.count), [1, 1, 1]);
-  assert.deepEqual(body.owed.map((order) => order.id), [old, late, fresh]);
+  assert.deepEqual(body.aging.map((band, i) => band.count - before[i]), [1, 1, 1]);
+  assert.deepEqual(body.owed.slice(0, 2).map((order) => order.id), [old, late]);
+  assert.ok(body.owed.some((order) => order.id === fresh));
   assert.equal(body.owed[0].days, 90);
   assert.ok(!body.owed.some((order) => order.id === paid));
   assert.match(body.notices[0].title, /Old Customer owes ₹[\d,]+ for 90 days/);

@@ -272,7 +272,12 @@ function wireChips(id, onPick) {
   const box = document.getElementById(id);
   const buttons = [...box.querySelectorAll('button')];
   const chosen = buttons.find((button) => button.getAttribute('aria-pressed') === 'true');
-  if (chosen) box.scrollLeft = chosen.offsetLeft - box.offsetLeft - 8;
+  // Scroll only as far as needed to show the chosen filter, so the first ones stay readable.
+  if (chosen) {
+    const left = chosen.offsetLeft - box.offsetLeft;
+    const right = left + chosen.offsetWidth;
+    if (right > box.clientWidth) box.scrollLeft = right - box.clientWidth + 8;
+  }
   buttons.forEach((button) => {
     button.onclick = () => {
       buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
